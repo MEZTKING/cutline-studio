@@ -69,6 +69,8 @@ export interface Transition {
 
 export interface TextStyle {
   content: string;
+  /** Caption cues are styled and placed as subtitles rather than free titles. */
+  caption?: boolean;
   /** Font size as a percentage of frame height. */
   size: number;
   color: string;
@@ -126,6 +128,13 @@ export interface Project {
   height: number;
   fps: number;
   tracks: Track[];
+}
+
+export interface CaptionSegment {
+  /** Timeline seconds. */
+  start: number;
+  end: number;
+  text: string;
 }
 
 export const TRANSITION_LABEL: Record<TransitionType, string> = {

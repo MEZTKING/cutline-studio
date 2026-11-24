@@ -6,6 +6,7 @@ import type { MediaAsset } from '../core/types';
 import { importFile } from '../media/import';
 import { loadWorkspace, saveWorkspace } from '../persistence/db';
 import { useEditor } from '../state/store';
+import { CaptionsDialog } from './CaptionsDialog';
 import { ExportDialog } from './ExportDialog';
 import { Icon } from './icons';
 import { Inspector } from './Inspector';
@@ -142,6 +143,10 @@ export function App() {
         case 't':
         case 'T':
           state.addText();
+          break;
+        case 'c':
+        case 'C':
+          state.setCaptionsOpen(true);
           break;
         case 'Delete':
         case 'Backspace':
@@ -384,6 +389,7 @@ export function App() {
       )}
 
       <ExportDialog />
+      <CaptionsDialog />
       <Toast />
     </div>
   );

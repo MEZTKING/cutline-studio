@@ -244,7 +244,7 @@ function ClipPanel({ clipId }: { clipId: string }) {
     livePatchClip(clip.id, { color: { ...clip.color, [key]: v } });
   };
 
-  const durationLimit = asset ? sourceDuration(clip, asset) : clip.duration;
+  const durationLimit = asset ? sourceDuration(clip, asset) : Number.POSITIVE_INFINITY;
   const prev = previousClip(track, clip);
 
   return (
@@ -257,9 +257,9 @@ function ClipPanel({ clipId }: { clipId: string }) {
           {!asset?.thumbnail && <Icon name={clip.text ? 'text' : 'film'} size={14} />}
         </div>
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="clip-card-name">{clip.text ? clip.text.content.split('\n')[0] || 'Title' : clip.name}</div>
+          <div className="clip-card-name">{clip.text ? clip.text.content.split('\n')[0] || (clip.text.caption ? 'Caption' : 'Title') : clip.name}</div>
           <div className="clip-card-sub">
-            {track.name} · {clip.text ? 'Title' : asset ? `${asset.width}×${asset.height}` : '—'} · {formatDuration(clip.duration)}
+            {track.name} · {clip.text ? (clip.text.caption ? 'Caption' : 'Title') : asset ? `${asset.width}×${asset.height}` : '—'} · {formatDuration(clip.duration)}
           </div>
         </div>
         <button
@@ -287,7 +287,7 @@ function ClipPanel({ clipId }: { clipId: string }) {
       </div>
 
       {clip.text && (
-        <Section title="Title" defaultOpen>
+        <Section title={clip.text.caption ? 'Caption' : 'Title'} defaultOpen>
           <div className="field">
             <label>Text</label>
             <textarea
@@ -298,6 +298,33 @@ function ClipPanel({ clipId }: { clipId: string }) {
               onChange={(e) => livePatchClip(clip.id, { text: { ...clip.text!, content: e.target.value } })}
             />
           </div>
+          {clip.text.caption && (
+            <div className="field">
+              <label>Position</label>
+              <div className="seg">
+                {(
+                  [
+                    ['Bottom', 0.355],
+                    ['Middle', 0],
+                    ['Top', -0.355],
+                  ] as const
+                ).map(([label, y]) => (
+                  <button
+                    key={label}
+                    className={Math.abs(clip.transform.y - y) < 0.02 ? 'on' : ''}
+                    onClick={() => {
+                      const st = useEditor.getState();
+                      st.beginGesture();
+                      st.livePatchClip(clip.id, { transform: { ...clip.transform, y } });
+                      st.endGesture();
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="field">
             <label>Alignment</label>
             <div className="seg">
@@ -631,6 +658,13 @@ function ProjectPanel() {
             ))}
           </select>
         </div>
+      </Section>
+
+      <Section title="Captions" defaultOpen>
+        <div className="hint">Generate subtitles on-device with Whisper, import an .srt, or add cues manually.</div>
+        <button className="btn sm" onClick={() => useEditor.getState().setCaptionsOpen(true)}>
+          <Icon name="captions" size={13} /> Open captions
+        </button>
       </Section>
 
       <Section title="Stats" defaultOpen={false}>

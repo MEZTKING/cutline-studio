@@ -3,6 +3,7 @@ import {
   addTrack as addTrackModel,
   clampClipToSource,
   createProject,
+  createCaptionClip,
   createTextClip,
   uid,
   defaultTransition,
@@ -19,9 +20,10 @@ import {
   addClip as addClipModel,
   moveClip as moveClipModel,
   clipEnd,
+  sortedClips,
   type ActiveTransition,
 } from '../core/model';
-import type { AnimatableProp, Clip, MediaAsset, Project, Track, TransitionType } from '../core/types';
+import type { AnimatableProp, CaptionSegment, Clip, MediaAsset, Project, Track, TransitionType } from '../core/types';
 import { COLOR_DEFAULTS, TRANSFORM_DEFAULTS } from '../core/types';
 
 const HISTORY_LIMIT = 50;
@@ -45,6 +47,7 @@ interface EditorState {
   importBusy: number;
   mobilePanel: MobilePanel;
   exportOpen: boolean;
+  captionsOpen: boolean;
 
   setProject: (p: Project, assets?: Record<string, MediaAsset>) => void;
   loadWorkspace: (project: Project, assets: MediaAsset[]) => void;
@@ -63,6 +66,10 @@ interface EditorState {
   select: (clipId: string | null, trackId?: string | null) => void;
   setMobilePanel: (panel: MobilePanel) => void;
   setExportOpen: (open: boolean) => void;
+  setCaptionsOpen: (open: boolean) => void;
+  addCaptions: (segments: CaptionSegment[]) => number;
+  addCaptionAtPlayhead: () => void;
+  clearCaptions: () => void;
   notify: (text: string, kind?: 'info' | 'error' | 'success') => void;
 
   addClipToTrack: (trackId: string, asset: MediaAsset, start: number, duration?: number) => string | null;
@@ -90,6 +97,41 @@ function pushHistory(past: Project[], project: Project): Project[] {
   return [...past, project].slice(-HISTORY_LIMIT);
 }
 
+function ensureCaptionTrack(project: Project): { project: Project; trackId: string; trackName: string } {
+  const existing = project.tracks.find((t) => t.kind === 'video' && t.clips.some((c) => c.text?.caption));
+  if (existing) {
+    return {
+      project: {
+        ...project,
+        tracks: project.tracks.map((t) =>
+          t.id === existing.id ? { ...t, clips: t.clips.filter((c) => !c.text?.caption) } : t,
+        ),
+      },
+      trackId: existing.id,
+      trackName: existing.name,
+    };
+  }
+
+  const used = new Set(project.tracks.map((t) => t.name));
+  let name = 'CC';
+  let n = 2;
+  while (used.has(name)) {
+    name = `CC${n}`;
+    n++;
+  }
+
+  const withTrack = addTrackModel(project, 'video');
+  const created = withTrack.tracks[0];
+  return {
+    project: {
+      ...withTrack,
+      tracks: withTrack.tracks.map((t) => (t.id === created.id ? { ...t, name } : t)),
+    },
+    trackId: created.id,
+    trackName: name,
+  };
+}
+
 export const useEditor = create<EditorState>((set, get) => ({
   project: createProject(),
   assets: {},
@@ -107,6 +149,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   importBusy: 0,
   mobilePanel: null,
   exportOpen: false,
+  captionsOpen: false,
 
   setProject: (project, assets) => set((s) => ({ project, assets: assets ?? s.assets })),
   loadWorkspace: (project, assets) =>
@@ -181,6 +224,84 @@ export const useEditor = create<EditorState>((set, get) => ({
   select: (clipId, trackId = null) => set({ selection: { clipId, trackId } }),
   setMobilePanel: (panel) => set({ mobilePanel: panel }),
   setExportOpen: (open) => set({ exportOpen: open }),
+  setCaptionsOpen: (open) => set({ captionsOpen: open }),
+
+  addCaptions: (segments) => {
+    const state = get();
+    const ensured = ensureCaptionTrack(state.project);
+    const trackId = ensured.trackId;
+    const sorted = [...segments].sort((a, b) => a.start - b.start);
+    const clips: Clip[] = [];
+    let cursor = 0;
+    for (const seg of sorted) {
+      const text = seg.text.replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      const start = Math.max(0, round(seg.start), cursor);
+      const end = Math.max(start + 0.3, seg.end);
+      const clip = createCaptionClip(start, Math.min(30, end - start), text);
+      clips.push(clip);
+      cursor = clip.start + clip.duration + 0.01;
+    }
+    if (!clips.length) {
+      state.notify('No speech found in the audio.', 'error');
+      return 0;
+    }
+    const project: Project = {
+      ...ensured.project,
+      tracks: ensured.project.tracks.map((t) =>
+        t.id === trackId ? { ...t, clips: sortedClips({ ...t, clips: [...t.clips, ...clips] }) } : t,
+      ),
+    };
+    set({
+      project,
+      past: pushHistory(state.past, state.project),
+      future: [],
+      selection: { clipId: clips[0].id, trackId },
+      captionsOpen: false,
+    });
+    const shown = ensured.trackName ? ` on ${ensured.trackName}` : '';
+    state.notify(`Added ${clips.length} caption${clips.length === 1 ? '' : 's'}${shown}`, 'success');
+    return clips.length;
+  },
+
+  addCaptionAtPlayhead: () => {
+    const state = get();
+    const ensured = ensureCaptionTrack(state.project);
+    const clip = createCaptionClip(state.playhead, 3, 'New caption');
+    const project: Project = {
+      ...ensured.project,
+      tracks: ensured.project.tracks.map((t) =>
+        t.id === ensured.trackId ? { ...t, clips: sortedClips({ ...t, clips: [...t.clips, clip] }) } : t,
+      ),
+    };
+    set({
+      project,
+      past: pushHistory(state.past, state.project),
+      future: [],
+      selection: { clipId: clip.id, trackId: ensured.trackId },
+      captionsOpen: false,
+      mobilePanel: 'inspector',
+    });
+  },
+
+  clearCaptions: () => {
+    const state = get();
+    const has = state.project.tracks.some((t) => t.clips.some((c) => c.text?.caption));
+    if (!has) return;
+    const tracks = state.project.tracks
+      .map((t) => ({ ...t, clips: t.clips.filter((c) => !c.text?.caption) }))
+      .filter((t) => !(t.kind === 'video' && t.clips.length === 0 && /^CC/.test(t.name)));
+    const selection = state.project.tracks.some((t) => t.clips.some((c) => c.id === state.selection.clipId && c.text?.caption))
+      ? { clipId: null, trackId: null }
+      : state.selection;
+    set({
+      project: { ...state.project, tracks },
+      past: pushHistory(state.past, state.project),
+      future: [],
+      selection,
+    });
+    state.notify('Captions cleared', 'info');
+  },
   notify: (text, kind = 'info') => set({ toast: { id: Date.now(), text, kind } }),
 
   addClipToTrack: (trackId, asset, start, duration) => {

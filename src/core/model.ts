@@ -10,6 +10,7 @@ import {
   type TrackKind,
   type Transition,
   type TransitionType,
+  type CaptionSegment,
 } from './types';
 
 let counter = 0;
@@ -82,6 +83,38 @@ export function createTextClip(start: number, content = 'Your title'): Clip {
       padding: 1.6,
     },
   };
+}
+
+export function createCaptionClip(start: number, duration: number, content: string): Clip {
+  const clip = createTextClip(start, content);
+  return {
+    ...clip,
+    name: 'Caption',
+    duration: Math.max(0.3, round(duration)),
+    transform: { ...clip.transform, y: 0.355 },
+    text: {
+      ...clip.text!,
+      caption: true,
+      size: 4.4,
+      bold: false,
+      shadow: true,
+      align: 'center',
+      background: '#000000',
+      backgroundOpacity: 0.62,
+      padding: 0.85,
+    },
+  };
+}
+
+export function captionSegments(project: Project): CaptionSegment[] {
+  const out: CaptionSegment[] = [];
+  for (const track of project.tracks) {
+    for (const clip of track.clips) {
+      if (!clip.text?.caption) continue;
+      out.push({ start: clip.start, end: clipEnd(clip), text: clip.text.content });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
 }
 
 export function round(n: number, places = 3): number {

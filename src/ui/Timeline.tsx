@@ -391,6 +391,13 @@ export function Timeline() {
         >
           <Icon name="text" size={14} /> <span className="tl-label">Title</span>
         </button>
+        <button
+          className="btn ghost sm"
+          title="Captions — auto, SRT import/export"
+          onClick={() => useEditor.getState().setCaptionsOpen(true)}
+        >
+          <Icon name="captions" size={15} /> <span className="tl-label">CC</span>
+        </button>
         <span className="divider" />
         <button
           className={`btn ghost sm ${snap ? 'active' : ''}`}
@@ -532,6 +539,7 @@ export function Timeline() {
                   {track.clips.map((clip) => {
                     const asset = assets[clip.assetId];
                     const isText = Boolean(clip.text);
+                    const isCaption = Boolean(clip.text?.caption);
                     const width = Math.max(3, clip.duration * zoom);
                     const selected = selection.clipId === clip.id;
                     const hasKf = Object.keys(clip.keyframes).length > 0;
@@ -539,7 +547,7 @@ export function Timeline() {
                     return (
                       <div
                         key={clip.id}
-                        className={`clip ${track.kind} ${isText ? 'text' : ''} ${selected ? 'selected' : ''}`}
+                        className={`clip ${track.kind} ${isText ? 'text' : ''} ${isCaption ? 'caption' : ''} ${selected ? 'selected' : ''}`}
                         style={{ left: clip.start * zoom, width }}
                         onPointerDown={(e) => startClipDrag(e, clip, track)}
                         title={`${clip.name} · ${formatDuration(clip.duration)}`}
@@ -564,7 +572,7 @@ export function Timeline() {
                         )}
                         {width > 76 && (
                           <div className="clip-sub">
-                            <Icon name={isText ? 'text' : track.kind === 'audio' ? 'music' : 'film'} size={8} />
+                            <Icon name={isCaption ? 'captions' : isText ? 'text' : track.kind === 'audio' ? 'music' : 'film'} size={8} />
                             {formatDuration(clip.duration)}
                           </div>
                         )}

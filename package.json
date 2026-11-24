@@ -1,7 +1,7 @@
 {
   "name": "cutline-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Cutline Studio — a fast, touch-first timeline editor that runs in the browser.",
   "scripts": {
@@ -12,9 +12,11 @@
     "test:smoke": "node tests/smoke.mjs",
     "test:features": "node tests/features.mjs",
     "test:mobile": "node tests/mobile.mjs",
-    "test": "node tests/smoke.mjs && node tests/features.mjs && node tests/mobile.mjs"
+    "test": "node tests/srt.test.mjs && node tests/smoke.mjs && node tests/features.mjs && node tests/mobile.mjs && node tests/captions.mjs",
+    "test:srt": "node tests/srt.test.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
     "mp4-muxer": "^5.2.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

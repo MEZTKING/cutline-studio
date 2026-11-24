@@ -2,7 +2,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.1 — working MVP.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.2 — working MVP with on-device auto-captions.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -52,9 +52,14 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 - Ten transitions: dissolve, dip to black/white, four wipes, two slides, iris —
   with automatic audio crossfades.
 
-**Titles**
+**Titles & captions**
 - Vector title clips rendered at export resolution: font size, colour, backdrop
   colour/opacity, padding, alignment, bold, shadow, plus transform/keyframes.
+- **On-device auto-captions** with Whisper tiny (English): transcribes the timeline
+  locally, creates editable cues on a dedicated CC track, and downloads the ~41 MB
+  model once. Nothing is uploaded.
+- Manual cues, .srt import/export, caption position (bottom/middle/top), restyling,
+  and the same keyframe/transform toolkit as titles.
 
 **Audio**
 - Web Audio mixdown with per-clip volume, fades, speed, track mute, and transition crossfades.
@@ -71,6 +76,10 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 | --- | --- |
 | ![Desktop editing](docs/screens/desktop-editing.png) | ![Mobile editing](docs/screens/mobile-editing.png) |
 
+![Captions](docs/screens/desktop-captions.png)
+
+![Phone captions](docs/screens/mobile-captions.png)
+
 ![Export](docs/screens/desktop-export.png)
 
 ---
@@ -84,6 +93,7 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 | Delete / ripple delete | `Delete` / `Shift+Delete` |
 | Duplicate clip | `Ctrl/Cmd+D` |
 | Add title | `T` |
+| Captions panel | `C` |
 | Undo / redo | `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z` |
 | Step a frame | `←` / `→` (add `Shift` for 1 s) |
 | Start / end | `Home` / `End` |
@@ -140,8 +150,8 @@ npm test   # smoke + features + mobile (needs a Playwright Chromium; set CHROME_
 
 ## Known limits (read this)
 
-- **Not parity yet.** No GPU pipeline, no LUTs, no masks/tracking, no captions, no
-  multicam, no proxy media, no collaboration, no HDR/colour management.
+- **Not parity yet.** No GPU pipeline, no LUTs, no masks/tracking, no multicam,
+  no proxy media, no collaboration, no HDR/colour management.
 - Preview is capped at 1280 px internally; export still renders at full target resolution.
 - Transitions require the clips to be adjacent on the same track; audio uses source
   handles, so a transition may shorten to the available audio.
@@ -163,7 +173,8 @@ npm test   # smoke + features + mobile (needs a Playwright Chromium; set CHROME_
 - Per-clip crop rectangle, speed curves, freeze frames, reverse.
 
 **P1 — CapCut-level ease**
-- Auto-captions (on-device Whisper), text templates, auto-reframe (subject tracking).
+- Caption translation, multilingual Whisper models, speaker labels, caption templates.
+- Auto-reframe (subject tracking), text templates.
 - Beat detection and auto-cut to music, silence removal, scene detection.
 - Sticker/emoji overlays, transitions library with presets, social aspect presets.
 
