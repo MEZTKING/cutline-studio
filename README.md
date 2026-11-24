@@ -128,9 +128,9 @@ transition, exports, decodes the exported file's video/audio, reloads to test au
 and checks the mobile layout. `node tests/features.mjs` covers titles, decimal inputs,
 duplicate/undo, and persistence.
 
-Latest run against the production build: **all checks passing** — 24 smoke checks
-(including offline reload and exported A/V decode), 9 feature checks, and 12 mobile/landscape
-layout checks. Reports are written to `test-results/`.
+Latest run against the production build: **all checks passing** — end-to-end smoke
+(import → edit → transition → export → decode → offline reload), titles/inputs/duplicate,
+export cancel-and-retry, and mobile/landscape layout. Reports are written to `test-results/`.
 
 ```bash
 npm test   # smoke + features + mobile (needs a Playwright Chromium; set CHROME_PATH to override)

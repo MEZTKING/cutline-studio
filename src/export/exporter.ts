@@ -188,29 +188,6 @@ export async function exportProject(
 
   let fatal: Error | null = null;
 
-  const VE = (window as unknown as { VideoEncoder: new (init: unknown) => VideoEncoderLike }).VideoEncoder;
-  const venc = new VE({
-    output: (chunk: unknown, meta: unknown) => {
-      try {
-        muxer.addVideoChunk(chunk as never, meta as never);
-      } catch (e) {
-        fatal = e instanceof Error ? e : new Error(String(e));
-      }
-    },
-    error: (e: unknown) => {
-      fatal = e instanceof Error ? e : new Error(String(e));
-    },
-  });
-  venc.configure({
-    codec: plan.videoCodec,
-    width,
-    height,
-    bitrate: bitrateFor(width, height, fps, settings.quality),
-    framerate: fps,
-    latencyMode: 'quality',
-    ...(plan.videoCodec.startsWith('avc1') ? { avc: { format: 'avc' } } : {}),
-  });
-
   // ---- Audio encode ----
   if (audioBuffer && plan.audioCodec) {
     const AE = (window as unknown as { AudioEncoder: new (init: unknown) => AudioEncoderLike }).AudioEncoder;
@@ -227,6 +204,7 @@ export async function exportProject(
       },
     });
     aenc.configure({ codec: plan.audioCodec, sampleRate: 48000, numberOfChannels: 2, bitrate: 192000 });
+    try {
     const sr = audioBuffer.sampleRate;
     const channels = Math.min(2, audioBuffer.numberOfChannels);
     const total = audioBuffer.length;
@@ -253,9 +231,39 @@ export async function exportProject(
       while (aenc.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 4));
     }
     await aenc.flush();
-    aenc.close();
+    } finally {
+      try {
+        aenc.close();
+      } catch {
+        /* already closed */
+      }
+    }
     onProgress({ phase: 'Encoding audio', percent: 8 });
   }
+
+  const VE = (window as unknown as { VideoEncoder: new (init: unknown) => VideoEncoderLike }).VideoEncoder;
+  const venc = new VE({
+    output: (chunk: unknown, meta: unknown) => {
+      try {
+        muxer.addVideoChunk(chunk as never, meta as never);
+      } catch (e) {
+        fatal = e instanceof Error ? e : new Error(String(e));
+      }
+    },
+    error: (e: unknown) => {
+      fatal = e instanceof Error ? e : new Error(String(e));
+    },
+  });
+  venc.configure({
+    codec: plan.videoCodec,
+    width,
+    height,
+    bitrate: bitrateFor(width, height, fps, settings.quality),
+    framerate: fps,
+    latencyMode: 'quality',
+    ...(plan.videoCodec.startsWith('avc1') ? { avc: { format: 'avc' } } : {}),
+  });
+
 
   // ---- Video frames ----
   const canvas = document.createElement('canvas');
@@ -270,6 +278,7 @@ export async function exportProject(
   const VideoFrameCtor = (window as unknown as { VideoFrame: new (source: CanvasImageSource, init: { timestamp: number; duration?: number }) => VideoFrameLike }).VideoFrame;
   if (!VideoFrameCtor) throw new Error('VideoFrame is unavailable in this browser.');
 
+  try {
   for (let i = 0; i < totalFrames; i++) {
     checkAbort();
     if (fatal) throw fatal;
@@ -291,8 +300,14 @@ export async function exportProject(
     }
   }
   await venc.flush();
-  venc.close();
-  pool.dispose();
+  } finally {
+    try {
+      venc.close();
+    } catch {
+      /* already closed */
+    }
+    pool.dispose();
+  }
 
   checkAbort();
   onProgress({ phase: 'Finalising file', percent: 92 });
