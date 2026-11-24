@@ -1,0 +1,131 @@
+import { useEditor } from '../state/store';
+import { formatDuration } from '../core/model';
+import { preferredTrack } from '../core/placement';
+import { defaultInsertStart } from '../core/placement';
+import type { MediaAsset } from '../core/types';
+import { Icon } from './icons';
+
+export function MediaBin({ showHead = true, onImport }: { showHead?: boolean; onImport: () => void }) {
+  const assets = useEditor((s) => s.assets);
+  const order = useEditor((s) => s.assetOrder);
+  const addClipToTrack = useEditor((s) => s.addClipToTrack);
+  const removeAsset = useEditor((s) => s.removeAsset);
+  const notify = useEditor((s) => s.notify);
+  const list = order.map((id) => assets[id]).filter(Boolean);
+
+  const addToTimeline = (asset: MediaAsset) => {
+    const state = useEditor.getState();
+    const track = preferredTrack(state.project, asset.kind, state.selection.trackId);
+    if (!track) {
+      notify(`Add a ${asset.kind === 'audio' ? 'audio' : 'video'} track first.`, 'error');
+      return;
+    }
+    const duration = asset.kind === 'image' ? 5 : asset.duration;
+    const start = defaultInsertStart(track, state.playhead, duration);
+    addClipToTrack(track.id, asset, start, duration);
+    notify(`Placed “${asset.name}” on ${track.name}`, 'success');
+  };
+
+  return (
+    <>
+      {showHead && (
+        <div className="panel-head">
+          <span>Media</span>
+          <span className="count">{list.length} items</span>
+        </div>
+      )}
+
+      <div className="panel-scroll">
+        {list.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">
+              <Icon name="film" size={24} />
+            </div>
+            <h3>Your media goes here</h3>
+            <p>Import video, audio, or stills. On phones everything stays on-device — nothing is uploaded.</p>
+            <button className="btn primary sm" onClick={onImport}>
+              <Icon name="upload" size={14} /> Import media
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="asset-grid">
+              {list.map((asset) => (
+                <div
+                  key={asset.id}
+                  className="asset-card"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/x-cutline-asset', asset.id);
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onClick={() => addToTimeline(asset)}
+                  title={`Tap to add ${asset.name} at the playhead`}
+                >
+                  <div className="asset-thumb" style={asset.thumbnail ? { backgroundImage: `url(${asset.thumbnail})` } : undefined}>
+                    {!asset.thumbnail && <Icon name={asset.kind === 'audio' ? 'music' : asset.kind === 'image' ? 'image' : 'film'} size={18} />}
+                    <span className="asset-badge">
+                      <Icon name={asset.kind === 'audio' ? 'music' : asset.kind === 'image' ? 'image' : 'film'} size={9} />
+                      {asset.kind === 'video' ? 'VID' : asset.kind === 'audio' ? 'AUD' : 'IMG'}
+                    </span>
+                    <span className="asset-dur">{formatDuration(asset.duration)}</span>
+                    <div className="asset-add">
+                      <Icon name="plus" size={10} /> Add to timeline
+                    </div>
+                  </div>
+                  <div className="asset-meta">
+                    <div className="asset-name">{asset.name}</div>
+                  </div>
+                  <button
+                    className="asset-del"
+                    title="Remove from project"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Remove “${asset.name}” and any clips using it?`)) removeAsset(asset.id);
+                    }}
+                  >
+                    <Icon name="close" size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="drop-hint">
+              Tap a card to insert it at the playhead, or drag it onto the timeline.
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="bin-footer">
+        <button className="btn sm" onClick={onImport} style={{ flex: 1 }}>
+          <Icon name="plus" size={13} /> Import
+        </button>
+        <button
+          className="btn sm icon"
+          title="Add every unused asset to the timeline"
+          disabled={list.length === 0}
+          onClick={() => {
+            const state = useEditor.getState();
+            let v = 0;
+            let a = 0;
+            for (const asset of list) {
+              const track = preferredTrack(useEditor.getState().project, asset.kind);
+              if (!track) continue;
+              const duration = asset.kind === 'image' ? 5 : asset.duration;
+              if (asset.kind === 'audio') {
+                useEditor.getState().addClipToTrack(track.id, asset, a, duration);
+                a += duration;
+              } else {
+                useEditor.getState().addClipToTrack(track.id, asset, v, duration);
+                v += duration;
+              }
+            }
+            state.notify('Added all media to the timeline', 'success');
+          }}
+        >
+          <Icon name="layers" size={13} />
+        </button>
+      </div>
+    </>
+  );
+}

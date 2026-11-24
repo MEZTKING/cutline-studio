@@ -1,0 +1,32 @@
+{
+  "name": "cutline-studio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cutline Studio — a fast, touch-first timeline editor that runs in the browser.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5173",
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "node tests/smoke.mjs",
+    "test:features": "node tests/features.mjs",
+    "test:mobile": "node tests/mobile.mjs",
+    "test": "node tests/smoke.mjs && node tests/features.mjs && node tests/mobile.mjs"
+  },
+  "dependencies": {
+    "mp4-muxer": "^5.2.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "webm-muxer": "^5.1.4",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "playwright-core": "^1.55.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
+  }
+}

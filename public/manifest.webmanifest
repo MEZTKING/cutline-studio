@@ -1,0 +1,14 @@
+{
+  "name": "Cutline Studio",
+  "short_name": "Cutline",
+  "description": "A fast, touch-first timeline editor that runs entirely on your device.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#060709",
+  "theme_color": "#0c0e12",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
