@@ -61,9 +61,22 @@ const wRed = await sample(0.25, 0.5);
 const wBlue = await sample(0.75, 0.5);
 check('window grades inside the shape', Math.abs(wRed[0] - wRed[1]) < 8 && Math.abs(wRed[1] - wRed[2]) < 8, JSON.stringify(wRed));
 check('window leaves outside untouched', near(wBlue, 0, 0, 255, 25), JSON.stringify(wBlue));
+console.log('\n[3] Master RGB curve');
+await page.evaluate(() => {
+  const s = window.__cutline.getState();
+  const clip = s.project.tracks.find((t) => t.kind === 'video').clips[0];
+  s.updateClip(clip.id, { color: { ...clip.color, saturation: 0, qualifier: { ...clip.color.qualifier, enabled: false }, window: { ...clip.color.window, enabled: false }, curve: [{ x: 0, y: 1 }, { x: 0.5, y: 0.5 }, { x: 1, y: 0 }] } });
+});
+await page.waitForTimeout(800);
+check('curve editor present', (await page.locator('.curve-canvas').count()) === 1);
+const cRed = await sample(0.25, 0.5);
+const cBlue = await sample(0.75, 0.5);
+check('inverted curve flips red to cyan', near(cRed, 0, 255, 255, 25), JSON.stringify(cRed));
+check('inverted curve flips blue to yellow', near(cBlue, 255, 255, 0, 25), JSON.stringify(cBlue));
 await page.screenshot({ path: `${OUT}/color-secondaries.png` });
 check('no GPU/runtime errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-fs.writeFileSync(`${OUT}/color-secondaries-report.json`, JSON.stringify({ checks, errors, qRed, qBlue, wRed, wBlue }, null, 2));
+fs.writeFileSync(`${OUT}/color-secondaries-report.json`, JSON.stringify({ checks, errors, qRed, qBlue, wRed, wBlue, cRed, cBlue }, null, 2));
+
 await browser.close();
 console.log(checks.every((c) => c.ok) ? 'COLOR SECONDARIES OK' : 'COLOR SECONDARIES FAILED');
 process.exit(checks.every((c) => c.ok) ? 0 : 1);

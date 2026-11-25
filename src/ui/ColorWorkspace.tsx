@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { defaultColor, findClip } from '../core/model';
-import { QUALIFIER_DEFAULTS, WINDOW_DEFAULTS, type ColorGrade, type ColorWheel } from '../core/types';
+import { CURVE_DEFAULTS, QUALIFIER_DEFAULTS, WINDOW_DEFAULTS, type ColorGrade, type ColorWheel, type CurvePoint } from '../core/types';
 import { ZERO_WHEEL } from '../core/types';
 import { parseCube, lutChoices, lutLabel } from '../color/lut';
 import { webglAvailable } from '../color/colorizer';
@@ -202,6 +202,128 @@ function ColorSlider({
         onChange={(e) => onChange(Number(e.target.value))}
       />
       <span className="color-slider-value">{Number(value.toFixed(1))}</span>
+    </div>
+  );
+}
+
+function CurveEditor({ points, onChange }: { points: CurvePoint[]; onChange: (points: CurvePoint[]) => void }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef<{ index: number; points: CurvePoint[] } | null>(null);
+
+  const draw = () => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#080a0d';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const x = (i / 4) * w, y = (i / 4) * h;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.beginPath(); ctx.moveTo(0, h); ctx.lineTo(w, 0); ctx.stroke();
+    const sorted = [...points].sort((a, b) => a.x - b.x);
+    ctx.strokeStyle = '#5cf2b0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= 100; i++) {
+      const x = i / 100;
+      let a = sorted[0], b = sorted[sorted.length - 1];
+      for (let k = 0; k < sorted.length - 1; k++) {
+        if (x >= sorted[k].x && x <= sorted[k + 1].x) { a = sorted[k]; b = sorted[k + 1]; break; }
+      }
+      const t = Math.min(1, Math.max(0, (x - a.x) / Math.max(1e-6, b.x - a.x)));
+      const y = a.y + (b.y - a.y) * (t * t * (3 - 2 * t));
+      const px = x * w, py = (1 - y) * h;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    for (const pt of sorted) {
+      ctx.beginPath();
+      ctx.arc(pt.x * w, (1 - pt.y) * h, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#0b0d10'; ctx.fill();
+      ctx.strokeStyle = '#5cf2b0'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  };
+
+  useEffect(draw, [points]);
+
+  const pointAt = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    return { x: (event.clientX - rect.left) / rect.width, y: 1 - (event.clientY - rect.top) / rect.height };
+  };
+
+  const onDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const pos = pointAt(event);
+    const sorted = [...points].sort((a, b) => a.x - b.x);
+    let index = sorted.findIndex((p) => Math.hypot(p.x - pos.x, p.y - pos.y) < 0.08);
+    let next = sorted;
+    if (index < 0) {
+      next = [...sorted, { x: Math.min(0.99, Math.max(0.01, pos.x)), y: Math.min(1, Math.max(0, pos.y)) }].sort((a, b) => a.x - b.x);
+      index = next.findIndex((p) => p.x === Math.min(0.99, Math.max(0.01, pos.x)));
+    }
+    drawing.current = { index, points: next };
+    useEditor.getState().beginGesture();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onChange(next);
+  };
+
+  const onMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawing.current) return;
+    const pos = pointAt(event);
+    const pts = drawing.current.points.map((p) => ({ ...p }));
+    const i = drawing.current.index;
+    const isFirst = i === 0, isLast = i === pts.length - 1;
+    if (!isFirst && !isLast) {
+      const left = pts[i - 1].x + 0.01;
+      const right = pts[i + 1].x - 0.01;
+      pts[i].x = Math.min(right, Math.max(left, pos.x));
+    }
+    pts[i].y = Math.min(1, Math.max(0, pos.y));
+    drawing.current.points = pts;
+    onChange(pts);
+  };
+
+  const onUp = () => {
+    if (!drawing.current) return;
+    drawing.current = null;
+    useEditor.getState().endGesture();
+  };
+
+  const onDouble = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const pos = pointAt(event);
+    const sorted = [...points].sort((a, b) => a.x - b.x);
+    const index = sorted.findIndex((p) => Math.hypot(p.x - pos.x, p.y - pos.y) < 0.08);
+    if (index > 0 && index < sorted.length - 1) {
+      onChange(sorted.filter((_, k) => k !== index));
+    }
+  };
+
+  return (
+    <div>
+      <canvas
+        ref={ref}
+        className="curve-canvas"
+        width={220}
+        height={140}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+        onDoubleClick={onDouble as unknown as React.MouseEventHandler<HTMLCanvasElement>}
+        title="Click to add a point, drag to shape, double-click a point to remove"
+      />
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 6 }}>
+        <span className="hint" style={{ margin: 0 }}>Master RGB · click to add, drag to shape</span>
+        <button className="btn ghost sm" onClick={() => onChange(CURVE_DEFAULTS.map((p) => ({ ...p })))}>Reset</button>
+      </div>
     </div>
   );
 }
@@ -488,6 +610,16 @@ export function ColorWorkspace({ showHead = true }: { showHead?: boolean }) {
                 />
               </div>
               <div className="hint">Lift shadows, shape midtones with gamma, and set highlight colour with gain.</div>
+            </div>
+          </div>
+
+          <div className="section color-card">
+            <div className="section-head">
+              <Icon name="gauge" size={11} />
+              <span>Curves</span>
+            </div>
+            <div className="section-body">
+              <CurveEditor points={color.curve ?? CURVE_DEFAULTS} onChange={(points) => setColor({ curve: points })} />
             </div>
           </div>
 

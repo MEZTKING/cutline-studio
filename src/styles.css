@@ -2852,3 +2852,15 @@ input[type="color"] {
   letter-spacing: 0.08em;
   pointer-events: none;
 }
+
+.curve-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 11 / 7;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: #080a0d;
+  touch-action: none;
+  cursor: crosshair;
+}

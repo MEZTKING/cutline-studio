@@ -99,6 +99,12 @@ export function isNeutralGrade(grade: ColorGrade | undefined): boolean {
     !(g.gamma && (g.gamma.x || g.gamma.y || g.gamma.master)) &&
     !(g.gain && (g.gain.x || g.gain.y || g.gain.master)) &&
     !g.qualifier?.enabled &&
-    !g.window?.enabled
+    !g.window?.enabled &&
+    !(g.curve &&
+      g.curve.length > 0 &&
+      !(g.curve.length === 3 &&
+        Math.abs(g.curve[0].x) < 1e-4 && Math.abs(g.curve[0].y) < 1e-4 &&
+        Math.abs(g.curve[1].x - 0.5) < 1e-4 && Math.abs(g.curve[1].y - 0.5) < 1e-4 &&
+        Math.abs(g.curve[2].x - 1) < 1e-4 && Math.abs(g.curve[2].y - 1) < 1e-4))
   );
 }

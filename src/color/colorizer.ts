@@ -19,6 +19,8 @@ in vec2 v_uv;
 out vec4 outColor;
 uniform sampler2D u_tex;
 uniform sampler3D u_lut;
+uniform sampler2D u_curve;
+uniform float u_useCurve;
 uniform float u_useLut;
 uniform float u_lutMix;
 uniform float u_lutSize;
@@ -92,6 +94,13 @@ void main() {
     vec3 graded = texture(u_lut, coord).rgb;
     c = mix(c, graded, u_lutMix);
   }
+  if (u_useCurve > 0.5) {
+    c = vec3(
+      texture(u_curve, vec2(clamp(c.r, 0.0, 1.0), 0.5)).r,
+      texture(u_curve, vec2(clamp(c.g, 0.0, 1.0), 0.5)).r,
+      texture(u_curve, vec2(clamp(c.b, 0.0, 1.0), 0.5)).r
+    );
+  }
   float mask = 1.0;
   if (u_qualOn > 0.5) {
     vec3 hsl = rgb2hsl(orig);
@@ -144,6 +153,7 @@ class Colorizer {
   private program: WebGLProgram;
   private sourceTex: WebGLTexture;
   private lutTextures = new Map<string, { texture: WebGLTexture; size: number }>();
+  private curveTex: WebGLTexture | null = null;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
   private width = 0;
   private height = 0;
@@ -195,12 +205,19 @@ class Colorizer {
       'u_tex', 'u_lut', 'u_useLut', 'u_lutMix', 'u_lutSize', 'u_lutDomainMin', 'u_lutDomainMax',
       'u_lift', 'u_gain', 'u_gamma', 'u_exposure', 'u_contrast', 'u_saturation', 'u_temperature', 'u_hue',
       'u_qualOn', 'u_qualHue', 'u_qualRange', 'u_qualSatMin', 'u_qualSatMax', 'u_qualLumMin', 'u_qualLumMax', 'u_qualSoft', 'u_qualInvert',
-      'u_winOn', 'u_winShape', 'u_winCenter', 'u_winSize', 'u_winFeather', 'u_winInvert',
+      'u_winOn', 'u_winShape', 'u_winCenter', 'u_winSize', 'u_winFeather', 'u_winInvert', 'u_curve', 'u_useCurve',
     ];
     for (const name of names) this.uniforms[name] = gl.getUniformLocation(program, name);
     gl.useProgram(program);
     gl.uniform1i(this.uniforms.u_tex ?? null, 0);
     gl.uniform1i(this.uniforms.u_lut ?? null, 1);
+    gl.uniform1i(this.uniforms.u_curve ?? null, 2);
+    this.curveTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.curveTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     this.canvas.addEventListener('webglcontextlost', () => {
       this.lost = true;
@@ -312,6 +329,36 @@ class Colorizer {
     gl.uniform3fv(uu.u_lift ?? null, u.lift);
     gl.uniform3fv(uu.u_gain ?? null, u.gain);
     gl.uniform3fv(uu.u_gamma ?? null, u.gamma);
+
+    const curve = grade?.curve;
+    const curveNeutral = !curve || curve.length < 2 || (curve.length === 3 && Math.abs(curve[0].x) < 1e-4 && Math.abs(curve[0].y) < 1e-4 && Math.abs(curve[1].x - 0.5) < 1e-4 && Math.abs(curve[1].y - 0.5) < 1e-4 && Math.abs(curve[2].x - 1) < 1e-4 && Math.abs(curve[2].y - 1) < 1e-4);
+    if (curve && !curveNeutral && this.curveTex) {
+      const pixels = new Uint8Array(256 * 4);
+      const pts = [...curve].sort((a, b) => a.x - b.x);
+      for (let i = 0; i < 256; i++) {
+        const x = i / 255;
+        let y = x;
+        if (pts.length >= 2) {
+          let a = pts[0];
+          let b = pts[pts.length - 1];
+          for (let k = 0; k < pts.length - 1; k++) {
+            if (x >= pts[k].x && x <= pts[k + 1].x) { a = pts[k]; b = pts[k + 1]; break; }
+          }
+          const span = Math.max(1e-6, b.x - a.x);
+          const t = Math.min(1, Math.max(0, (x - a.x) / span));
+          const sm = t * t * (3 - 2 * t);
+          y = a.y + (b.y - a.y) * sm;
+        }
+        const v = Math.round(Math.min(1, Math.max(0, y)) * 255);
+        pixels.set([v, v, v, 255], i * 4);
+      }
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, this.curveTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.uniform1f(uu.u_useCurve ?? null, 1);
+    } else {
+      gl.uniform1f(uu.u_useCurve ?? null, 0);
+    }
 
     const lut = findLut(luts, grade?.lutId);
     if (lut) {

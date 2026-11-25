@@ -64,6 +64,17 @@ export interface ProjectLut {
   domainMax?: [number, number, number];
 }
 
+export interface CurvePoint {
+  x: number;
+  y: number;
+}
+
+export const CURVE_DEFAULTS: CurvePoint[] = [
+  { x: 0, y: 0 },
+  { x: 0.5, y: 0.5 },
+  { x: 1, y: 1 },
+];
+
 export interface HslQualifier {
   enabled: boolean;
   /** Hue centre 0..1. */
@@ -131,6 +142,8 @@ export interface ColorGrade {
   lutMix?: number;
   qualifier?: HslQualifier;
   window?: PowerWindow;
+  /** Master RGB tone curve, sorted by x. */
+  curve?: CurvePoint[];
 }
 
 export type TransitionType =
@@ -269,6 +282,7 @@ export const COLOR_DEFAULTS: ColorGrade = {
   vignette: 0,
   qualifier: { ...QUALIFIER_DEFAULTS },
   window: { ...WINDOW_DEFAULTS },
+  curve: CURVE_DEFAULTS.map((p) => ({ ...p })),
   lift: { ...ZERO_WHEEL },
   gamma: { ...ZERO_WHEEL },
   gain: { ...ZERO_WHEEL },
