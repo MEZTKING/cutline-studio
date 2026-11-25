@@ -44,6 +44,7 @@ interface EditorState {
   playhead: number;
   playing: boolean;
   selection: { clipId: string | null; trackId: string | null };
+  selectedClips: string[];
   zoom: number;
   snap: boolean;
   past: Project[];
@@ -81,7 +82,11 @@ interface EditorState {
   setPlaying: (playing: boolean) => void;
   setZoom: (zoom: number) => void;
   setSnap: (snap: boolean) => void;
-  select: (clipId: string | null, trackId?: string | null) => void;
+  select: (clipId: string | null, trackId?: string | null, additive?: boolean) => void;
+  selectAll: () => void;
+  deleteSelected: (ripple?: boolean) => void;
+  liveMoveSelection: (primaryId: string, trackId: string, start: number, ids: string[]) => void;
+  moveSelection: (primaryId: string, trackId: string, start: number, ids: string[]) => void;
   setMobilePanel: (panel: MobilePanel) => void;
   setExportOpen: (open: boolean) => void;
   setCaptionsOpen: (open: boolean) => void;
@@ -167,6 +172,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   playhead: 0,
   playing: false,
   selection: { clipId: null, trackId: null },
+  selectedClips: [],
   zoom: 64,
   snap: true,
   past: [],
@@ -189,7 +195,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       past: [],
       future: [],
       playhead: 0,
-      selection: { clipId: null, trackId: null },
+      selection: { clipId: null, trackId: null }, selectedClips: [],
       playing: false,
     }),
   renameProject: (name) => set((s) => ({ project: { ...s.project, name } })),
@@ -220,7 +226,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       future: [],
       playhead: 0,
       playing: false,
-      selection: { clipId: null, trackId: null },
+      selection: { clipId: null, trackId: null }, selectedClips: [],
     })),
 
   addAssets: (assets) =>
@@ -280,7 +286,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         project,
         past: pushHistory(s.past, s.project),
         future: [],
-        selection: { clipId: null, trackId: null },
+        selection: { clipId: null, trackId: null }, selectedClips: [],
       };
     }),
 
@@ -288,7 +294,55 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPlaying: (playing) => set({ playing }),
   setZoom: (zoom) => set({ zoom: Math.min(400, Math.max(8, zoom)) }),
   setSnap: (snap) => set({ snap }),
-  select: (clipId, trackId = null) => set({ selection: { clipId, trackId } }),
+  select: (clipId, trackId = null, additive = false) =>
+    set((s) => {
+      if (!clipId) return { selection: { clipId: null, trackId: null }, selectedClips: [] };
+      if (additive) {
+        const exists = s.selectedClips.includes(clipId);
+        const next = exists ? s.selectedClips.filter((id) => id !== clipId) : [...s.selectedClips, clipId];
+        if (exists) {
+          const primary = next[next.length - 1] ?? null;
+          const found = primary ? findClip(s.project, primary) : null;
+          return { selection: { clipId: primary, trackId: found?.track.id ?? null }, selectedClips: next };
+        }
+        return { selection: { clipId, trackId }, selectedClips: next };
+      }
+      return { selection: { clipId, trackId }, selectedClips: [clipId] };
+    }),
+  selectAll: () =>
+    set((s) => {
+      const ids = s.project.tracks.flatMap((t) => t.clips.map((c) => c.id));
+      const last = ids[ids.length - 1] ?? null;
+      const found = last ? findClip(s.project, last) : null;
+      return { selection: { clipId: last, trackId: found?.track.id ?? null }, selectedClips: ids };
+    }),
+  deleteSelected: (ripple = false) =>
+    set((s) => {
+      const ids = s.selectedClips.length ? s.selectedClips : s.selection.clipId ? [s.selection.clipId] : [];
+      if (!ids.length) return s;
+      let project = s.project;
+      if (ripple && ids.length === 1) project = rippleDelete(project, ids[0]);
+      else for (const id of ids) project = removeClip(project, id);
+      return {
+        project,
+        past: pushHistory(s.past, s.project),
+        future: [],
+        selection: { clipId: null, trackId: null },
+        selectedClips: [],
+      };
+    }),
+  liveMoveSelection: (primaryId, trackId, start, ids) =>
+    set((s) => {
+      const next = shiftSelection(s.project, ids, primaryId, trackId, start);
+      if (next === s.project) return s;
+      return { project: next, gestureDirty: true };
+    }),
+  moveSelection: (primaryId, trackId, start, ids) =>
+    set((s) => {
+      const next = shiftSelection(s.project, ids, primaryId, trackId, start);
+      if (next === s.project) return s;
+      return { project: next, past: pushHistory(s.past, s.project), future: [] };
+    }),
   setMobilePanel: (panel) => set({ mobilePanel: panel }),
   setExportOpen: (open) => set({ exportOpen: open }),
   setCaptionsOpen: (open) => set({ captionsOpen: open }),
@@ -366,6 +420,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       past: pushHistory(state.past, state.project),
       future: [],
       selection: { clipId: clips[0].id, trackId },
+      selectedClips: [clips[0].id],
       captionsOpen: false,
     });
     const shown = ensured.trackName ? ` on ${ensured.trackName}` : '';
@@ -387,7 +442,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       project,
       past: pushHistory(state.past, state.project),
       future: [],
-      selection: { clipId: clip.id, trackId: ensured.trackId },
+      selection: { clipId: clip.id, trackId: ensured.trackId }, selectedClips: [clip.id],
       captionsOpen: false,
       mobilePanel: 'inspector',
     });
@@ -408,6 +463,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       past: pushHistory(state.past, state.project),
       future: [],
       selection,
+      selectedClips: selection.clipId ? [selection.clipId] : [],
     });
     state.notify('Captions cleared', 'info');
   },
@@ -423,6 +479,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       past: pushHistory(state.past, state.project),
       future: [],
       selection: { clipId: clip.id, trackId },
+      selectedClips: [clip.id],
     });
     return clip.id;
   },
@@ -457,7 +514,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       project: next,
       past: pushHistory(state.past, state.project),
       future: [],
-      selection: { clipId: clip.id, trackId: targetId },
+      selection: { clipId: clip.id, trackId: targetId }, selectedClips: [clip.id],
       mobilePanel: 'inspector',
     });
   },
@@ -487,7 +544,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       project: next,
       past: pushHistory(state.past, state.project),
       future: [],
-      selection: { clipId: copy.id, trackId: found.track.id },
+      selection: { clipId: copy.id, trackId: found.track.id }, selectedClips: [copy.id],
     });
   },
 
@@ -541,7 +598,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         project,
         past: pushHistory(s.past, s.project),
         future: [],
-        selection: { clipId: audioClip.id, trackId: audioTrack.id },
+        selection: { clipId: audioClip.id, trackId: audioTrack.id }, selectedClips: [audioClip.id],
       };
     }),
 
@@ -603,7 +660,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const next = ripple ? rippleDelete(s.project, clipId) : removeClip(s.project, clipId);
       return {
         project: next,
-        selection: { clipId: null, trackId: null },
+        selection: { clipId: null, trackId: null }, selectedClips: [],
         past: pushHistory(s.past, s.project),
         future: [],
       };
@@ -634,7 +691,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       project: removeTrackModel(s.project, trackId),
       past: pushHistory(s.past, s.project),
       future: [],
-      selection: { clipId: null, trackId: null },
+      selection: { clipId: null, trackId: null }, selectedClips: [],
     })),
 
   setTransition: (clipId, type, duration = 0.6) =>
@@ -699,6 +756,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         future: [s.project, ...s.future].slice(0, HISTORY_LIMIT),
         playing: false,
         selection: validateSelection(prev, s.selection),
+        selectedClips: s.selectedClips.filter((id) => Boolean(findClip(prev, id))),
       };
     }),
 
@@ -712,9 +770,31 @@ export const useEditor = create<EditorState>((set, get) => ({
         future: s.future.slice(1),
         playing: false,
         selection: validateSelection(next, s.selection),
+        selectedClips: s.selectedClips.filter((id) => Boolean(findClip(next, id))),
       };
     }),
 }));
+
+function shiftSelection(project: Project, ids: string[], primaryId: string, targetTrackId: string, newStart: number): Project {
+  const primary = findClip(project, primaryId);
+  if (!primary) return project;
+  const members = ids.map((id) => findClip(project, id)).filter((f): f is NonNullable<typeof f> => Boolean(f));
+  if (!members.length) return project;
+  const minStart = Math.min(...members.map((m) => m.clip.start));
+  const delta = Math.max(Math.max(0, newStart) - primary.clip.start, -minStart);
+  if (Math.abs(delta) < 1e-6) return project;
+  const linkedIds = primary.clip.linkId
+    ? project.tracks.flatMap((t) => t.clips.filter((c) => c.linkId === primary.clip.linkId).map((c) => c.id))
+    : [];
+  let next = moveClipWithLinks(project, primaryId, targetTrackId, primary.clip.start + delta);
+  if (next === project && targetTrackId !== primary.track.id) return project;
+  for (const id of ids) {
+    if (id === primaryId || linkedIds.includes(id)) continue;
+    const found = findClip(next, id);
+    if (found) next = patchClip(next, id, { start: round(found.clip.start + delta) });
+  }
+  return next;
+}
 
 function validateSelection(project: Project, selection: { clipId: string | null; trackId: string | null }) {
   if (!selection.clipId) return selection;

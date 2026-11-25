@@ -196,11 +196,18 @@ export function App() {
         case 'F':
           state.setFineScrub(!state.fineScrub);
           break;
+        case 'a':
+        case 'A':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            state.selectAll();
+          }
+          break;
         case 'Delete':
         case 'Backspace':
-          if (state.selection.clipId) {
+          if (state.selection.clipId || state.selectedClips.length) {
             e.preventDefault();
-            state.deleteClip(state.selection.clipId, e.shiftKey);
+            state.deleteSelected(e.shiftKey);
           }
           break;
         case 'ArrowLeft':

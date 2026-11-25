@@ -101,6 +101,7 @@ export function Timeline() {
   const zoom = useEditor((s) => s.zoom);
   const snap = useEditor((s) => s.snap);
   const fineScrub = useEditor((s) => s.fineScrub);
+  const selectedClips = useEditor((s) => s.selectedClips);
   const selection = useEditor((s) => s.selection);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -173,12 +174,37 @@ export function Timeline() {
     e.preventDefault();
     e.stopPropagation();
     const handle = (e.target as HTMLElement).closest('[data-handle]') as HTMLElement | null;
-    const mode: 'move' | 'trim-start' | 'trim-end' | 'slip' =
-      handle?.dataset.handle === 'start' ? 'trim-start' : handle?.dataset.handle === 'end' ? 'trim-end' : e.altKey && !clip.text ? 'slip' : 'move';
-
     const state = useEditor.getState();
+    if ((e.ctrlKey || e.metaKey) && !handle) {
+      state.setPlaying(false);
+      state.select(clip.id, track.id, true);
+      return;
+    }
     state.setPlaying(false);
-    state.select(clip.id, track.id);
+    const ordered = [...track.clips].sort((a, b) => a.start - b.start);
+    const idx = ordered.findIndex((c) => c.id === clip.id);
+    const prev = idx > 0 ? ordered[idx - 1] : null;
+    const next = idx >= 0 ? ordered[idx + 1] : null;
+    const canSlide = Boolean(
+      prev && next &&
+      Math.abs(clipEnd(prev) - clip.start) < 0.05 &&
+      Math.abs(clipEnd(clip) - next.start) < 0.05 &&
+      !clip.text && !prev.text && !next.text &&
+      !clip.transition && !prev.transition && !next.transition,
+    );
+    const mode: 'move' | 'trim-start' | 'trim-end' | 'slip' | 'slide' =
+      handle?.dataset.handle === 'start'
+        ? 'trim-start'
+        : handle?.dataset.handle === 'end'
+          ? 'trim-end'
+          : e.altKey && !clip.text
+            ? 'slip'
+            : e.shiftKey && canSlide
+              ? 'slide'
+              : 'move';
+    if (!(state.selectedClips.length > 1 && state.selectedClips.includes(clip.id)) || mode !== 'move') {
+      state.select(clip.id, track.id);
+    }
     state.beginGesture();
 
     const origin = {
@@ -188,6 +214,9 @@ export function Timeline() {
       trackId: track.id,
       mode,
       moved: false,
+      groupIds: useEditor.getState().selectedClips,
+      prev,
+      next,
     };
     const original = origin.clip;
 
@@ -218,6 +247,28 @@ export function Timeline() {
         }
         return best;
       };
+
+      if (origin.mode === 'slide') {
+        if (!origin.prev || !origin.next) return;
+        const pFound = proj.tracks.flatMap((t) => t.clips).find((c) => c.id === origin.prev!.id);
+        const nFound = proj.tracks.flatMap((t) => t.clips).find((c) => c.id === origin.next!.id);
+        if (!pFound || !nFound) return;
+        const pAsset = store.assets[pFound.assetId];
+        const nAsset = store.assets[nFound.assetId];
+        const maxPrev = pAsset && pAsset.kind !== 'image' ? Math.max(0.1, (pAsset.duration - pFound.inPoint) / Math.max(0.1, pFound.speed)) : Number.POSITIVE_INFINITY;
+        const minDelta = Math.max(MIN_DUR - origin.prev!.duration, -(origin.next!.inPoint / Math.max(0.1, origin.next!.speed)), -original.start);
+        const maxDelta = Math.min(maxPrev - origin.prev!.duration, origin.next!.duration - MIN_DUR, 60);
+        let delta = Math.min(maxDelta, Math.max(minDelta, dt));
+        if (Math.abs(delta) < 0.001) return;
+        store.livePatchClip(pFound.id, { duration: origin.prev!.duration + delta });
+        store.livePatchClip(clip.id, { start: original.start + delta });
+        store.livePatchClip(nFound.id, {
+          start: origin.next!.start + delta,
+          duration: origin.next!.duration - delta,
+          inPoint: nAsset?.kind === 'image' ? origin.next!.inPoint : origin.next!.inPoint + delta * origin.next!.speed,
+        });
+        return;
+      }
 
       if (origin.mode === 'slip') {
         if (asset.kind === 'image') return;
@@ -254,7 +305,11 @@ export function Timeline() {
         const overTrack = proj.tracks.find((t) => t.id === overTrackId);
         const canMove = overTrack && !overTrack.locked && overTrack.kind === track.kind;
         const targetTrackId = canMove ? overTrackId : origin.trackId;
-        store.liveMoveClip(clip.id, targetTrackId, nextStart);
+        if (origin.groupIds.length > 1 && origin.groupIds.includes(clip.id)) {
+          store.liveMoveSelection(clip.id, targetTrackId, nextStart, origin.groupIds);
+        } else {
+          store.liveMoveClip(clip.id, targetTrackId, nextStart);
+        }
         origin.trackId = targetTrackId;
         return;
       }
@@ -426,7 +481,7 @@ export function Timeline() {
           disabled={!selection.clipId}
           onClick={() => {
             const s = useEditor.getState();
-            if (s.selection.clipId) s.deleteClip(s.selection.clipId, false);
+            s.deleteSelected(false);
           }}
         >
           <Icon name="trash" size={14} /> <span className="tl-label">Delete</span>
@@ -437,7 +492,7 @@ export function Timeline() {
           disabled={!selection.clipId}
           onClick={() => {
             const s = useEditor.getState();
-            if (s.selection.clipId) s.deleteClip(s.selection.clipId, true);
+            s.deleteSelected(true);
           }}
         >
           <Icon name="split" size={14} /> <span className="tl-label">Ripple</span>
@@ -632,7 +687,7 @@ export function Timeline() {
                     const isText = Boolean(clip.text);
                     const isCaption = Boolean(clip.text?.caption);
                     const width = Math.max(3, clip.duration * zoom);
-                    const selected = selection.clipId === clip.id;
+                    const selected = selectedClips.includes(clip.id);
                     const hasKf = Object.keys(clip.keyframes).length > 0;
                     const animated = Object.values(clip.keyframes).some((list) => (list?.length ?? 0) > 0);
                     return (
@@ -641,7 +696,7 @@ export function Timeline() {
                         className={`clip ${track.kind} ${isText ? 'text' : ''} ${isCaption ? 'caption' : ''} ${selected ? 'selected' : ''}`}
                         style={{ left: clip.start * zoom, width }}
                         onPointerDown={(e) => startClipDrag(e, clip, track)}
-                        title={`${clip.name} · ${formatDuration(clip.duration)} · Alt-drag to slip`}
+                        title={`${clip.name} · ${formatDuration(clip.duration)} · Alt-drag slip · Shift-drag slide · Ctrl-click multi-select`}
                       >
                         {asset?.thumbnail && (
                           <div

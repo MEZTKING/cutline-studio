@@ -8,7 +8,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.13.0 — two builds from one engine, now with render queue + watch folders, portable project bundles + relink, a headless render CLI and localhost automation API, linked A/V editing, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.14.0 — two builds from one engine, now with multi-select/slide, render queue + watch folders, portable project bundles + relink, a headless render CLI and localhost automation API, linked A/V editing, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -32,7 +32,7 @@ small IPC bridge. The web build remains zero-install and unchanged.
 
 | Pillar | Today | Next |
 | --- | --- | --- |
-| **Edit** | Multi-track timeline, trim/split/ripple, roll, slip, linked A/V detach, J/L trims, snapping, keyframes, undo | Slide, multi-select, insert/overwrite, multicam, nested sequences |
+| **Edit** | Multi-track timeline, trim/split/ripple, roll, slip, slide, multi-select group move/delete, linked A/V detach, J/L trims, snapping, keyframes, undo | Insert/overwrite, marquee select, multicam, nested sequences |
 | **Color** | GPU primary grade, lift/gamma/gain wheels, 3D LUTs, live scopes, bypass | Curves, HSL qualifier, power windows, node graph, keyframed grades, HDR |
 | **Audio** | dB gain, pan, 3-band EQ, compressor, normalize, fades, presets, solo/mute | Buses, ducking, 5.1, denoise |
 | **Effects** | Ten transitions, auto-reframe, titles, captions | Keying, masks, motion tracking, Fusion-style node effects |
@@ -296,6 +296,9 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 - **Detach audio** — creates a linked audio clip on an audio track. Linked clips move together,
   while trims stay independent for **J and L cuts**.
 - **Unlink A/V** when you want both halves to move independently.
+- **Multi-select** with `Ctrl/Cmd`-click (or `Ctrl/Cmd+A`); selected clips show together and drag/delete as a group.
+- **Slide** with `Shift`-drag a clip that sits between two adjacent clips: the clip moves and both
+  neighbours trim to keep the timeline closed.
 - Undo/redo with 50 steps, per-gesture history (a drag is one undo step).
 
 **Look**
@@ -326,6 +329,8 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 
 **Edit tools**
 ![Roll, slip, detach](docs/screens/desktop-edit-tools.png)
+
+![Multi-select and slide](docs/screens/desktop-multiselect.png)
 
 **Audio page**
 ![Audio controls](docs/screens/audio-panel.png)
@@ -390,6 +395,9 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 | Fine scrub | `F` |
 | Slip a clip | `Alt` + drag |
 | Roll an edit | drag the amber cut bar |
+| Multi-select | `Ctrl/Cmd` + click |
+| Select all clips | `Ctrl/Cmd+A` |
+| Slide a clip | `Shift` + drag |
 | Undo / redo | `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z` |
 | Step a frame | `←` / `→` (add `Shift` for 1 s) |
 | Start / end | `Home` / `End` |
@@ -451,7 +459,8 @@ export → decode → offline reload), on-device caption generation from real sp
 SRT round-trip, auto-reframe with a moving face, titles and decimal inputs, export
 cancel-and-retry, audio pan/mute/presets through export, detach/link, roll/slip, J/L trims,
 fine scrub + thumbnails,
-source auto-match at 24 fps, fullscreen display-resolution preview, detach/link, roll/slip,
+source auto-match at 24 fps, fullscreen display-resolution preview, detach/link, roll/slip/slide,
+multi-select group move/delete,
 **portable bundles with media copying/relative paths/move-and-reopen**, **background render queue
 with presets and watch folders**, **headless CLI + local API renders with audio**, mobile/landscape
 layout, and the GPU colour page (LUT application,
@@ -464,6 +473,7 @@ DISPLAY=:99 npm run test:color   # GPU colour page (needs a display + Mesa/Swift
 DISPLAY=:99 npm run test:updater # auto-check, dialog, verified download (Electron)
 DISPLAY=:99 npm run test:auto    # 24 fps auto-match, override, fullscreen canvas (headed)
 npm run test:edit                # detach/link, J/L trims, roll, slip
+npm run test:multi               # multi-select group move/delete + slide
 npm run test:cli                 # headless render + local API (Electron, needs a display)
 npm run test:desktop:bundle      # save/move/reopen a bundle (Electron)
 npm run test:queue               # background queue render with video + audio (Electron)
@@ -500,8 +510,9 @@ it, please open an issue first.
 - Audio v1 has per-clip EQ/compression but no buses, sidechain ducking, noise reduction, or 5.1.
 - Fine scrub is 1/5 speed; hover preview renders a small composited frame and is throttled
   for performance.
-- Edit v1 has roll/slip and linked audio detach, but **no slide, multi-select, insert/overwrite,
-  multicam, or nested sequences** yet. Linked clips move together but trims stay independent by design.
+- Edit v1 has roll/slip/slide, multi-select group move/delete, and linked audio detach, but **no
+  insert/overwrite, marquee select, multicam, or nested sequences** yet. Linked clips move together
+  but trims stay independent by design.
 - Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
   media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
 - The **normal** preview is capped at 1280 px for performance; fullscreen uses display resolution (up to 4K). Neither changes export resolution.
