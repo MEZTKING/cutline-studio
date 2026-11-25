@@ -3,6 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+if (process.platform === 'win32') {
+  console.log('Update helper: Unix replacement test skipped on Windows');
+  process.exit(0);
+}
 const require = createRequire(import.meta.url);
 const { UNIX_HELPER } = require('../desktop/updater.cjs');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cutline-helper-'));
