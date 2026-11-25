@@ -251,11 +251,12 @@ transition, exports, decodes the exported file's video/audio, reloads to test au
 and checks the mobile layout. `node tests/features.mjs` covers titles, decimal inputs,
 duplicate/undo, and persistence.
 
-Latest runs: **all web suites passing** — end-to-end smoke
-(import → edit → transition → export → decode → offline reload), on-device caption
-generation from real speech, SRT round-trip, auto-reframe with a moving face, titles and
-decimal inputs, export cancel-and-retry, and mobile/landscape layout. Reports are written
-to `test-results/`.
+Latest runs: **all suites passing** — end-to-end smoke (import → edit → transition →
+export → decode → offline reload), on-device caption generation from real speech,
+SRT round-trip, auto-reframe with a moving face, titles and decimal inputs, export
+cancel-and-retry, mobile/landscape layout, and the GPU colour page (LUT application,
+channel order, bypass, scopes, burned-in export, persistence, phone sheet). Reports are
+written to `test-results/`.
 
 ```bash
 npm test          # SRT + framing math, smoke, features, mobile, captions, auto-reframe
