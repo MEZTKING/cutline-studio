@@ -45,6 +45,16 @@ npm install
 npm run desktop:start        # builds the web bundle, opens the Electron app
 ```
 
+Live-reload development (two terminals):
+
+```bash
+npm run dev
+# Linux / macOS
+CUTLINE_DEV_URL=http://127.0.0.1:5173 npx electron .
+# Windows PowerShell
+$env:CUTLINE_DEV_URL="http://127.0.0.1:5173"; npx electron .
+```
+
 Or package it:
 
 ```bash
@@ -289,7 +299,8 @@ Reports land in `test-results/desktop-*.json`.
 - **Windows:** `electron-builder` NSIS configuration and a `windows-latest` GitHub Actions
   workflow are included. The installer is **unsigned**; SmartScreen will warn. A Windows
   binary cannot be built or executed in this Android/Linux container — the first real Windows
-  run will be the CI artifact or a local Windows build.
+  run will be the CI artifact or a local Windows build. The packaged Linux app **is** verified
+  (imports, range streaming, save/reopen, autosave, H.264/ProRes masters, relaunch).
 - **Long-term:** Tauri remains an option for a much smaller shell with the same UI and a Rust
   native backend. The renderer, project model, and FFmpeg bridge are shell-agnostic.
 
