@@ -417,6 +417,95 @@ export function moveClip(project: Project, clipId: string, targetTrackId: string
   };
 }
 
+export function insertClipAt(
+  project: Project,
+  trackId: string,
+  asset: MediaAsset,
+  start: number,
+  duration?: number,
+): { project: Project; clip: Clip } {
+  const track = project.tracks.find((t) => t.id === trackId);
+  if (!track || track.locked) return { project, clip: createClip(asset, start) };
+  const at = Math.max(0, round(start));
+  const clip = createClip(asset, at, 0, duration);
+  const pieces: Clip[] = [];
+  for (const c of track.clips) {
+    if (c.start < at - 0.001 && clipEnd(c) > at + 0.001) {
+      const leftDur = at - c.start;
+      const rightDur = clipEnd(c) - at;
+      pieces.push({ ...c, duration: round(leftDur) });
+      pieces.push({
+        ...c,
+        id: uid('clp'),
+        start: at,
+        duration: round(rightDur),
+        inPoint: round(c.inPoint + leftDur * c.speed),
+        transition: null,
+        keyframes: {},
+      });
+    } else {
+      pieces.push(c);
+    }
+  }
+  const shifted = pieces.map((c) =>
+    c.start >= at - 0.001 ? { ...c, start: round(c.start + clip.duration) } : c,
+  );
+  const next = {
+    ...project,
+    tracks: project.tracks.map((t) =>
+      t.id === trackId ? { ...t, clips: sortedClips({ ...t, clips: [...shifted, clip] }) } : t,
+    ),
+  };
+  return { project: next, clip };
+}
+
+export function overwriteClipAt(
+  project: Project,
+  trackId: string,
+  asset: MediaAsset,
+  start: number,
+  duration?: number,
+): { project: Project; clip: Clip } {
+  const track = project.tracks.find((t) => t.id === trackId);
+  if (!track || track.locked) return { project, clip: createClip(asset, start) };
+  const at = Math.max(0, round(start));
+  const clip = createClip(asset, at, 0, duration);
+  const end = clipEnd(clip);
+  const result: Clip[] = [];
+  for (const c of track.clips) {
+    const cEnd = clipEnd(c);
+    if (cEnd <= at + 0.001 || c.start >= end - 0.001) {
+      result.push(c);
+      continue;
+    }
+    if (c.start >= at - 0.001 && cEnd <= end + 0.001) continue;
+    const keepLeft = c.start < at - 0.001;
+    const keepRight = cEnd > end + 0.001;
+    if (keepLeft) {
+      result.push({ ...c, duration: round(at - c.start) });
+    }
+    if (keepRight) {
+      const cut = Math.max(0, end - c.start);
+      result.push({
+        ...c,
+        id: uid('clp'),
+        start: round(Math.max(c.start, end)),
+        duration: round(cEnd - Math.max(c.start, end)),
+        inPoint: round(c.inPoint + cut * c.speed),
+        transition: null,
+        keyframes: {},
+      });
+    }
+  }
+  const next = {
+    ...project,
+    tracks: project.tracks.map((t) =>
+      t.id === trackId ? { ...t, clips: sortedClips({ ...t, clips: [...result, clip] }) } : t,
+    ),
+  };
+  return { project: next, clip };
+}
+
 export function moveClipWithLinks(project: Project, clipId: string, targetTrackId: string, newStart: number): Project {
   const found = findClip(project, clipId);
   if (!found || !found.clip.linkId) return moveClip(project, clipId, targetTrackId, newStart);

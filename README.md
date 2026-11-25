@@ -8,7 +8,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.14.0 — two builds from one engine, now with multi-select/slide, render queue + watch folders, portable project bundles + relink, a headless render CLI and localhost automation API, linked A/V editing, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.15.0 — two builds from one engine, now with insert/overwrite, multi-select/slide, render queue + watch folders, portable project bundles + relink, a headless render CLI and localhost automation API, linked A/V editing, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -32,7 +32,7 @@ small IPC bridge. The web build remains zero-install and unchanged.
 
 | Pillar | Today | Next |
 | --- | --- | --- |
-| **Edit** | Multi-track timeline, trim/split/ripple, roll, slip, slide, multi-select group move/delete, linked A/V detach, J/L trims, snapping, keyframes, undo | Insert/overwrite, marquee select, multicam, nested sequences |
+| **Edit** | Multi-track timeline, trim/split/ripple, roll, slip, slide, insert/overwrite, multi-select group move/delete, insert/overwrite, linked A/V detach, J/L trims, snapping, keyframes, undo | Marquee select, multicam, nested sequences |
 | **Color** | GPU primary grade, lift/gamma/gain wheels, 3D LUTs, live scopes, bypass | Curves, HSL qualifier, power windows, node graph, keyframed grades, HDR |
 | **Audio** | dB gain, pan, 3-band EQ, compressor, normalize, fades, presets, solo/mute | Buses, ducking, 5.1, denoise |
 | **Effects** | Ten transitions, auto-reframe, titles, captions | Keying, masks, motion tracking, Fusion-style node effects |
@@ -299,6 +299,10 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 - **Multi-select** with `Ctrl/Cmd`-click (or `Ctrl/Cmd+A`); selected clips show together and drag/delete as a group.
 - **Slide** with `Shift`-drag a clip that sits between two adjacent clips: the clip moves and both
   neighbours trim to keep the timeline closed.
+- **Insert** with `Shift` when dropping a media item: splits at the drop point, shifts the rest of
+  that track right, and closes the gap.
+- **Overwrite** with `Ctrl/Cmd` (or Alt) on drop: places the clip at the point and trims/removes
+  whatever it covers. The same modifiers work when clicking a media card.
 - Undo/redo with 50 steps, per-gesture history (a drag is one undo step).
 
 **Look**
@@ -331,6 +335,8 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 ![Roll, slip, detach](docs/screens/desktop-edit-tools.png)
 
 ![Multi-select and slide](docs/screens/desktop-multiselect.png)
+
+![Insert and overwrite](docs/screens/desktop-insert-overwrite.png)
 
 **Audio page**
 ![Audio controls](docs/screens/audio-panel.png)
@@ -398,6 +404,8 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 | Multi-select | `Ctrl/Cmd` + click |
 | Select all clips | `Ctrl/Cmd+A` |
 | Slide a clip | `Shift` + drag |
+| Insert drop | `Shift` + drop |
+| Overwrite drop | `Ctrl/Cmd` + drop |
 | Undo / redo | `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z` |
 | Step a frame | `←` / `→` (add `Shift` for 1 s) |
 | Start / end | `Home` / `End` |
@@ -474,6 +482,7 @@ DISPLAY=:99 npm run test:updater # auto-check, dialog, verified download (Electr
 DISPLAY=:99 npm run test:auto    # 24 fps auto-match, override, fullscreen canvas (headed)
 npm run test:edit                # detach/link, J/L trims, roll, slip
 npm run test:multi               # multi-select group move/delete + slide
+npm run test:insert              # insert split/ripple + overwrite trim
 npm run test:cli                 # headless render + local API (Electron, needs a display)
 npm run test:desktop:bundle      # save/move/reopen a bundle (Electron)
 npm run test:queue               # background queue render with video + audio (Electron)
@@ -510,9 +519,7 @@ it, please open an issue first.
 - Audio v1 has per-clip EQ/compression but no buses, sidechain ducking, noise reduction, or 5.1.
 - Fine scrub is 1/5 speed; hover preview renders a small composited frame and is throttled
   for performance.
-- Edit v1 has roll/slip/slide, multi-select group move/delete, and linked audio detach, but **no
-  insert/overwrite, marquee select, multicam, or nested sequences** yet. Linked clips move together
-  but trims stay independent by design.
+- Edit v1 has roll/slip/slide, insert/overwrite, multi-select group move/delete, and linked audio detach, but **no marquee select, multicam, or nested sequences** yet. Linked clips move together but trims stay independent by design.
 - Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
   media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
 - The **normal** preview is capped at 1280 px for performance; fullscreen uses display resolution (up to 4K). Neither changes export resolution.

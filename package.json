@@ -1,7 +1,7 @@
 {
   "name": "cutline-studio",
   "private": true,
-  "version": "0.14.0",
+  "version": "0.15.0",
   "type": "module",
   "description": "A touch-first professional video editor: browser PWA and an Electron/FFmpeg Windows build with a DaVinci-style colour page, audio mixer, captions, auto-reframe, and an in-app updater.",
   "scripts": {
@@ -12,7 +12,7 @@
     "test:smoke": "node tests/smoke.mjs",
     "test:features": "node tests/features.mjs",
     "test:mobile": "node tests/mobile.mjs",
-    "test": "node tests/srt.test.mjs && node tests/reframe.test.mjs && node tests/update-core.test.mjs && node tests/bundle.test.mjs && node tests/update-helper.mjs && node tests/smoke.mjs && node tests/features.mjs && node tests/project-settings.mjs && node tests/edit-tools.mjs && node tests/multi-select.mjs && node tests/audio.mjs && node tests/scrub.mjs && node tests/mobile.mjs && node tests/captions.mjs && node tests/reframe-browser.mjs",
+    "test": "node tests/srt.test.mjs && node tests/reframe.test.mjs && node tests/update-core.test.mjs && node tests/bundle.test.mjs && node tests/update-helper.mjs && node tests/smoke.mjs && node tests/features.mjs && node tests/project-settings.mjs && node tests/edit-tools.mjs && node tests/multi-select.mjs && node tests/insert-overwrite.mjs && node tests/audio.mjs && node tests/scrub.mjs && node tests/mobile.mjs && node tests/captions.mjs && node tests/reframe-browser.mjs",
     "test:srt": "node tests/srt.test.mjs",
     "postinstall": "node scripts/sync-mediapipe.mjs",
     "predev": "node scripts/sync-mediapipe.mjs",
@@ -45,7 +45,8 @@
     "test:desktop:bundle": "node tests/desktop-bundle.mjs",
     "test:queue": "node tests/render-queue.mjs",
     "test:watch": "node tests/watch-folders.mjs",
-    "test:multi": "node tests/multi-select.mjs"
+    "test:multi": "node tests/multi-select.mjs",
+    "test:insert": "node tests/insert-overwrite.mjs"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

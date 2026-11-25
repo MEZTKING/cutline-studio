@@ -14,7 +14,7 @@ export function MediaBin({ showHead = true, onImport, onRelink }: { showHead?: b
   const list = order.map((id) => assets[id]).filter(Boolean);
   const offlineCount = list.filter((a) => a.offline).length;
 
-  const addToTimeline = (asset: MediaAsset) => {
+  const addToTimeline = (asset: MediaAsset, mode: 'free' | 'insert' | 'overwrite' = 'free') => {
     const state = useEditor.getState();
     const track = preferredTrack(state.project, asset.kind, state.selection.trackId);
     if (!track) {
@@ -22,9 +22,17 @@ export function MediaBin({ showHead = true, onImport, onRelink }: { showHead?: b
       return;
     }
     const duration = asset.kind === 'image' ? 5 : asset.duration;
-    const start = defaultInsertStart(track, state.playhead, duration);
-    addClipToTrack(track.id, asset, start, duration);
-    notify(`Placed “${asset.name}” on ${track.name}`, 'success');
+    if (mode === 'insert') {
+      state.insertClipToTrack(track.id, asset, state.playhead, duration);
+      notify(`Inserted “${asset.name}” on ${track.name}`, 'success');
+    } else if (mode === 'overwrite') {
+      state.overwriteClipToTrack(track.id, asset, state.playhead, duration);
+      notify(`Overwrote “${asset.name}” on ${track.name}`, 'success');
+    } else {
+      const start = defaultInsertStart(track, state.playhead, duration);
+      addClipToTrack(track.id, asset, start, duration);
+      notify(`Placed “${asset.name}” on ${track.name}`, 'success');
+    }
   };
 
   return (
@@ -73,14 +81,14 @@ export function MediaBin({ showHead = true, onImport, onRelink }: { showHead?: b
                     e.dataTransfer.setData('text/x-cutline-asset', asset.id);
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
-                  onClick={() => {
+                  onClick={(e) => {
                     if (asset.offline) {
                       notify(`“${asset.name}” is offline. Use Relink to locate it.`, 'error');
                       return;
                     }
-                    addToTimeline(asset);
+                    addToTimeline(asset, e.shiftKey ? 'insert' : e.ctrlKey || e.metaKey ? 'overwrite' : 'free');
                   }}
-                  title={asset.offline ? `${asset.name} — offline` : `Tap to add ${asset.name} at the playhead`}
+                  title={asset.offline ? `${asset.name} — offline` : `Add ${asset.name} at the playhead · Shift inserts · Ctrl/Cmd overwrites`}
                 >
                   <div className="asset-thumb" style={asset.thumbnail ? { backgroundImage: `url(${asset.thumbnail})` } : undefined}>
                     {!asset.thumbnail && <Icon name={asset.kind === 'audio' ? 'music' : asset.kind === 'image' ? 'image' : 'film'} size={18} />}

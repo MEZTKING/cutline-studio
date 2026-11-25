@@ -13,6 +13,8 @@ import {
   removeClip,
   removeTrack as removeTrackModel,
   moveClipWithLinks,
+  insertClipAt,
+  overwriteClipAt,
   rippleDelete,
   splitAt,
   upsertKeyframe,
@@ -87,6 +89,8 @@ interface EditorState {
   deleteSelected: (ripple?: boolean) => void;
   liveMoveSelection: (primaryId: string, trackId: string, start: number, ids: string[]) => void;
   moveSelection: (primaryId: string, trackId: string, start: number, ids: string[]) => void;
+  insertClipToTrack: (trackId: string, asset: MediaAsset, start: number, duration?: number) => string | null;
+  overwriteClipToTrack: (trackId: string, asset: MediaAsset, start: number, duration?: number) => string | null;
   setMobilePanel: (panel: MobilePanel) => void;
   setExportOpen: (open: boolean) => void;
   setCaptionsOpen: (open: boolean) => void;
@@ -468,6 +472,36 @@ export const useEditor = create<EditorState>((set, get) => ({
     state.notify('Captions cleared', 'info');
   },
   notify: (text, kind = 'info') => set({ toast: { id: Date.now(), text, kind } }),
+
+  insertClipToTrack: (trackId, asset, start, duration) => {
+    const state = get();
+    const { project, clip } = insertClipAt(state.project, trackId, asset, Math.max(0, start), duration);
+    const real = findClip(project, clip.id);
+    if (!real) return null;
+    set({
+      project,
+      past: pushHistory(state.past, state.project),
+      future: [],
+      selection: { clipId: clip.id, trackId },
+      selectedClips: [clip.id],
+    });
+    return clip.id;
+  },
+
+  overwriteClipToTrack: (trackId, asset, start, duration) => {
+    const state = get();
+    const { project, clip } = overwriteClipAt(state.project, trackId, asset, Math.max(0, start), duration);
+    const real = findClip(project, clip.id);
+    if (!real) return null;
+    set({
+      project,
+      past: pushHistory(state.past, state.project),
+      future: [],
+      selection: { clipId: clip.id, trackId },
+      selectedClips: [clip.id],
+    });
+    return clip.id;
+  },
 
   addClipToTrack: (trackId, asset, start, duration) => {
     const state = get();

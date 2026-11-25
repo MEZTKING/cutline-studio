@@ -109,6 +109,7 @@ export function Timeline() {
   const headersRef = useRef<HTMLDivElement>(null);
   const [guide, setGuide] = useState<number | null>(null);
   const [dropTrack, setDropTrack] = useState<string | null>(null);
+  const [dropMode, setDropMode] = useState<'free' | 'insert' | 'overwrite' | null>(null);
 
   const totalDuration = projectDuration(project);
   const contentWidth = Math.max(640, Math.ceil((Math.max(totalDuration, 12) + 6) * zoom));
@@ -471,6 +472,11 @@ export function Timeline() {
 
   return (
     <div className="timeline-dock">
+      {dropMode && (
+        <div className="drop-mode-badge">
+          {dropMode === 'insert' ? 'INSERT · ripple' : dropMode === 'overwrite' ? 'OVERWRITE' : 'FREE POSITION'}
+        </div>
+      )}
       <div className="tl-toolbar">
         <button className="btn ghost sm" title="Split at playhead (S)" onClick={() => useEditor.getState().split()}>
           <Icon name="scissors" size={14} /> <span className="tl-label">Split</span>
@@ -627,18 +633,23 @@ export function Timeline() {
             if (!e.dataTransfer.types.includes('text/x-cutline-asset')) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'copy';
+            setDropMode(e.shiftKey ? 'insert' : e.ctrlKey || e.altKey ? 'overwrite' : 'free');
             const id = findTrackAtY(e.clientY);
             const hover = id ? project.tracks.find((t) => t.id === id) : null;
             setDropTrack(hover && !hover.locked ? hover.id : null);
           }}
           onDragLeave={(e) => {
-            if (e.currentTarget === e.target) setDropTrack(null);
+            if (e.currentTarget === e.target) {
+              setDropTrack(null);
+              setDropMode(null);
+            }
           }}
           onDrop={(e) => {
             const assetId = e.dataTransfer.getData('text/x-cutline-asset');
             if (!assetId) return;
             e.preventDefault();
             setDropTrack(null);
+            setDropMode(null);
             const s = useEditor.getState();
             const asset = s.assets[assetId];
             if (!asset) return;
@@ -654,9 +665,18 @@ export function Timeline() {
             if (!rect) return;
             const t = Math.max(0, (e.clientX - rect.left) / zoom);
             const duration = asset.kind === 'image' ? 5 : asset.duration;
-            const start = freeStart(track, t, duration);
-            s.addClipToTrack(track.id, asset, start, duration);
-            s.notify(`Added “${asset.name}” to ${track.name}`, 'success');
+            const mode = e.shiftKey ? 'insert' : e.ctrlKey || e.altKey ? 'overwrite' : 'free';
+            if (mode === 'insert') {
+              s.insertClipToTrack(track.id, asset, t, duration);
+              s.notify(`Inserted “${asset.name}” at ${track.name}`, 'success');
+            } else if (mode === 'overwrite') {
+              s.overwriteClipToTrack(track.id, asset, t, duration);
+              s.notify(`Overwrote “${asset.name}” on ${track.name}`, 'success');
+            } else {
+              const start = freeStart(track, t, duration);
+              s.addClipToTrack(track.id, asset, start, duration);
+              s.notify(`Added “${asset.name}” to ${track.name}`, 'success');
+            }
           }}
         >
           <div className="tl-canvas" ref={canvasRef} style={{ width: contentWidth }}>

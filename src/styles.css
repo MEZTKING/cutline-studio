@@ -2831,3 +2831,24 @@ input[type="color"] {
   font-size: 9px;
   color: var(--text-3);
 }
+
+.timeline-dock {
+  position: relative;
+}
+
+.drop-mode-badge {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid rgba(92, 242, 176, 0.4);
+  background: rgba(8, 18, 15, 0.92);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
