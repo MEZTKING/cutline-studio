@@ -48,12 +48,16 @@ if (fs.existsSync(values.out)) {
     /* replace malformed */
   }
 }
-manifest.platforms[values.platform] = {
+const artifact = {
   url: values.url,
   sha256,
   size,
   executable: values.executable,
 };
+manifest.platforms[values.platform] = artifact;
+// Architecture-agnostic fallback (e.g. win32) for emulated/unsupported arches.
+const osKey = values.platform.split('-')[0];
+if (osKey && osKey !== values.platform) manifest.platforms[osKey] = artifact;
 
 fs.mkdirSync(path.dirname(values.out), { recursive: true });
 fs.writeFileSync(values.out, JSON.stringify(manifest, null, 2) + '\n');
