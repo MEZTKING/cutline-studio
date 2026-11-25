@@ -176,7 +176,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       playing: false,
     }),
   renameProject: (name) => set((s) => ({ project: { ...s.project, name } })),
-  setProjectSettings: (patch) => set((s) => ({ project: { ...s.project, ...patch } })),
+  setProjectSettings: (patch) =>
+    set((s) => ({
+      project: { ...s.project, ...patch },
+      gestureDirty: s.gestureBase ? true : s.gestureDirty,
+    })),
   resetProject: () =>
     set((s) => ({
       project: createProject(s.project.name === 'Untitled project' ? 'Untitled project' : s.project.name),

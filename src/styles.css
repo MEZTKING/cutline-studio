@@ -2326,3 +2326,13 @@ input[type="color"] {
     width: 74px;
   }
 }
+
+.preview-badge .pill {
+  cursor: pointer;
+}
+
+.preview-badge .pill:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--text);
+  background: rgba(12, 18, 20, 0.94);
+}

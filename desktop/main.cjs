@@ -238,6 +238,7 @@ function buildMenu() {
       submenu: [
         { label: 'New Project', accelerator: 'CmdOrCtrl+N', click: () => sendMenu('new-project') },
         { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', click: () => sendMenu('open-project') },
+        { label: 'Project Settings…', accelerator: 'CmdOrCtrl+,', click: () => sendMenu('project-settings') },
         { type: 'separator' },
         { label: 'Save Project', accelerator: 'CmdOrCtrl+S', click: () => sendMenu('save-project') },
         { label: 'Save Project As…', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenu('save-project-as') },

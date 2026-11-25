@@ -138,8 +138,10 @@ export function Timeline() {
   };
 
   const onRowDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget && !(e.target as HTMLElement).classList.contains('row-grid')) return;
-    useEditor.getState().setPlaying(false);
+    if ((e.target as HTMLElement).closest('.clip')) return;
+    const state = useEditor.getState();
+    state.setPlaying(false);
+    state.select(null, null);
     seekFromClientX(e.clientX);
   };
 

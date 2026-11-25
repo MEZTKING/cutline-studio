@@ -158,8 +158,32 @@ export function Preview({ onImport }: { onImport: () => void }) {
           </div>
         )}
         <div className="preview-badge">
-          <span className="pill accent">{project.width}×{project.height}</span>
-          <span className="pill">{project.fps} fps</span>
+          <button
+            className="pill accent"
+            title="Project settings — canvas resolution and frame rate"
+            onClick={() => {
+              const state = useEditor.getState();
+              state.setPlaying(false);
+              state.select(null, null);
+              state.setWorkspace('edit');
+              state.setMobilePanel('inspector');
+            }}
+          >
+            {project.width}×{project.height}
+          </button>
+          <button
+            className="pill"
+            title="Project settings — canvas resolution and frame rate"
+            onClick={() => {
+              const state = useEditor.getState();
+              state.setPlaying(false);
+              state.select(null, null);
+              state.setWorkspace('edit');
+              state.setMobilePanel('inspector');
+            }}
+          >
+            {project.fps} fps
+          </button>
         </div>
       </div>
     </div>

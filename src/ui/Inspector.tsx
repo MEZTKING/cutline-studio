@@ -199,6 +199,18 @@ export function Inspector({ showHead = true }: { showHead?: boolean }) {
             <span className="count">{found ? 'Clip' : 'Project'}</span>
             <button
               className="btn ghost icon sm"
+              title="Project settings"
+              onClick={() => {
+                const state = useEditor.getState();
+                state.select(null, null);
+                state.setWorkspace('edit');
+                state.setMobilePanel('inspector');
+              }}
+            >
+              <Icon name="film" size={13} />
+            </button>
+            <button
+              className="btn ghost icon sm"
               title="Colour page"
               onClick={() => {
                 const state = useEditor.getState();
@@ -635,12 +647,18 @@ function ProjectPanel() {
           />
         </div>
         <div className="field">
-          <label>Canvas</label>
+          <label htmlFor="project-canvas">Canvas</label>
           <select
+            id="project-canvas"
             value={preset ? presetKey : 'custom'}
             onChange={(e) => {
               const found = RESOLUTIONS.find((r) => `${r.w}x${r.h}` === e.target.value);
-              if (found) setProjectSettings({ width: found.w, height: found.h });
+              if (found) {
+                const state = useEditor.getState();
+                state.beginGesture();
+                setProjectSettings({ width: found.w, height: found.h });
+                state.endGesture();
+              }
             }}
           >
             {RESOLUTIONS.map((r) => (
@@ -661,9 +679,19 @@ function ProjectPanel() {
             <NumberField value={project.height} min={16} max={7680} step={2} onChange={(v) => setProjectSettings({ height: Math.round(v) })} />
           </div>
         </div>
+        <div className="hint">Canvas size and frame rate apply to the whole project. Export resolution/fps are chosen separately in Export.</div>
         <div className="field">
-          <label>Frame rate</label>
-          <select value={project.fps} onChange={(e) => setProjectSettings({ fps: Number(e.target.value) })}>
+          <label htmlFor="project-fps">Frame rate</label>
+          <select
+            id="project-fps"
+            value={project.fps}
+            onChange={(e) => {
+              const state = useEditor.getState();
+              state.beginGesture();
+              setProjectSettings({ fps: Number(e.target.value) });
+              state.endGesture();
+            }}
+          >
             {[23.976, 24, 25, 30, 50, 60].map((f) => (
               <option key={f} value={f}>
                 {f} fps

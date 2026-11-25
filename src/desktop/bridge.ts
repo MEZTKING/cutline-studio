@@ -50,7 +50,8 @@ export type DesktopMenuCommand =
   | 'import-media'
   | 'export'
   | 'undo'
-  | 'redo';
+  | 'redo'
+  | 'project-settings';
 
 export interface NativeExportPayload {
   data: ArrayBuffer;

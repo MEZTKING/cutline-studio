@@ -2,7 +2,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.5 — two builds from one engine, now with a DaVinci-style colour page (GPU grading, LUTs, scopes, wheels).** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.5.1 — two builds from one engine, with a DaVinci-style colour page (GPU grading, LUTs, scopes, wheels).** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -119,6 +119,19 @@ implications — see *Third-party assets*.
 
 Everything stays in the browser: media is read with object URLs, audio is decoded with
 Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
+
+### Canvas resolution and frame rate
+
+Click the **resolution / fps pills** at the top-left of the viewer (or click empty space in the
+timeline) to deselect a clip and open **Inspector → Project settings**. On desktop you can also
+use **File → Project Settings…** (`Ctrl/Cmd+,`).
+
+- **Canvas** — 1080p, 4K, 720p, vertical 9:16, square, cinema 2.39:1, or custom width/height.
+- **Frame rate** — 23.976, 24, 25, 30, 50, or 60 fps for timecode, frame stepping, and export defaults.
+- These apply to the **whole project** and are undoable. Changing canvas size does not rescale
+  existing clips; use **Fill frame** (Transform) or **Auto-reframe** to refit them.
+- **Export resolution and fps are separate**: the Export dialog can render 720p/1080p/4K or
+  vertical/square at a different frame rate from the project canvas.
 
 ### Phone notes
 

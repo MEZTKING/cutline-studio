@@ -378,6 +378,11 @@ export function App() {
         case 'export':
           state.setExportOpen(true);
           break;
+        case 'project-settings':
+          state.select(null, null);
+          state.setWorkspace('edit');
+          state.setMobilePanel('inspector');
+          break;
         case 'undo':
           state.undo();
           break;
