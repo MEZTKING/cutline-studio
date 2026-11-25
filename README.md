@@ -345,6 +345,12 @@ Reports land in `test-results/desktop-*.json`; the colour report is `test-result
 
 ---
 
+## License
+
+No open-source license has been selected yet. The repository is public so the code can be read,
+tested, and reviewed; **all rights are reserved** until a license is added. If you want to reuse
+it, please open an issue first.
+
 ## Known limits (read this)
 
 - **Not parity yet.** No masks/tracking, no multicam, no proxy media, no collaboration,
