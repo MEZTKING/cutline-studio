@@ -660,6 +660,13 @@ function ProjectPanel() {
         </div>
       </Section>
 
+      <Section title="Reframe" defaultOpen={false}>
+        <div className="hint">Turn landscape footage into 9:16, 4:5, or square with face-following keyframes.</div>
+        <button className="btn sm" onClick={() => useEditor.getState().setReframeOpen(true)}>
+          <Icon name="reframe" size={13} /> Auto-reframe…
+        </button>
+      </Section>
+
       <Section title="Captions" defaultOpen>
         <div className="hint">Generate subtitles on-device with Whisper, import an .srt, or add cues manually.</div>
         <button className="btn sm" onClick={() => useEditor.getState().setCaptionsOpen(true)}>

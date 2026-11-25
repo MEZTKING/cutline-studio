@@ -398,6 +398,13 @@ export function Timeline() {
         >
           <Icon name="captions" size={15} /> <span className="tl-label">CC</span>
         </button>
+        <button
+          className="btn ghost sm"
+          title="Auto-reframe for social"
+          onClick={() => useEditor.getState().setReframeOpen(true)}
+        >
+          <Icon name="reframe" size={15} /> <span className="tl-label">Frame</span>
+        </button>
         <span className="divider" />
         <button
           className={`btn ghost sm ${snap ? 'active' : ''}`}

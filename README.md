@@ -2,7 +2,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.2 — working MVP with on-device auto-captions.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.3 — working MVP with on-device auto-captions and face-following auto-reframe.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -61,6 +61,13 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 - Manual cues, .srt import/export, caption position (bottom/middle/top), restyling,
   and the same keyframe/transform toolkit as titles.
 
+**Reframing**
+- **Auto-reframe** to 9:16, 4:5, 1:1, or 16:9: detects faces on-device (BlazeFace),
+  fills the new canvas, and keyframes the pan so the subject stays in shot.
+- One undo restores the previous canvas and framing. Locked tracks are left alone,
+  text/caption cues are preserved.
+- Centre-crop fallback when no face is found or the detector is unavailable.
+
 **Audio**
 - Web Audio mixdown with per-clip volume, fades, speed, track mute, and transition crossfades.
 - Automatic audio decode on import; waveform thumbnails in the bin and on the timeline.
@@ -80,6 +87,10 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 
 ![Phone captions](docs/screens/mobile-captions.png)
 
+![Auto-reframe](docs/screens/desktop-reframe.png)
+
+![Phone auto-reframe](docs/screens/mobile-reframe.png)
+
 ![Export](docs/screens/desktop-export.png)
 
 ---
@@ -94,6 +105,7 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 | Duplicate clip | `Ctrl/Cmd+D` |
 | Add title | `T` |
 | Captions panel | `C` |
+| Auto-reframe | `R` |
 | Undo / redo | `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z` |
 | Step a frame | `←` / `→` (add `Shift` for 1 s) |
 | Start / end | `Home` / `End` |
@@ -139,12 +151,16 @@ and checks the mobile layout. `node tests/features.mjs` covers titles, decimal i
 duplicate/undo, and persistence.
 
 Latest run against the production build: **all checks passing** — end-to-end smoke
-(import → edit → transition → export → decode → offline reload), titles/inputs/duplicate,
-export cancel-and-retry, and mobile/landscape layout. Reports are written to `test-results/`.
+(import → edit → transition → export → decode → offline reload), on-device caption
+generation from real speech, SRT round-trip, auto-reframe with a moving face, titles and
+decimal inputs, export cancel-and-retry, and mobile/landscape layout. Reports are written
+to `test-results/`.
 
 ```bash
-npm test   # smoke + features + mobile (needs a Playwright Chromium; set CHROME_PATH to override)
+npm test   # SRT + framing math, smoke, features, mobile, captions, auto-reframe
 ```
+
+The suites need Playwright Chromium; set `CHROME_PATH` to override the executable.
 
 ---
 
@@ -161,6 +177,12 @@ npm test   # smoke + features + mobile (needs a Playwright Chromium; set CHROME_
   its media; there is no backup bundle yet.
 - MP4/H.264/AAC availability is browser- and device-dependent. The app detects support
   and falls back, but a browser without WebCodecs (older Safari) cannot export.
+- Captions are English-only (Whisper tiny.en), capped at the first 10 minutes per run.
+  The first run downloads ~41 MB of model weights plus a ~27 MB WASM runtime, then
+  caches them on the device.
+- Auto-reframe tracks **faces**, not arbitrary objects. It resets each visual clip to
+  fill / 100% scale / 0° and replaces its position keyframes; locked tracks are skipped.
+  The face detector (~225 KB model + ~14 MB WASM, bundled locally) loads on first use.
 
 ---
 
@@ -174,7 +196,7 @@ npm test   # smoke + features + mobile (needs a Playwright Chromium; set CHROME_
 
 **P1 — CapCut-level ease**
 - Caption translation, multilingual Whisper models, speaker labels, caption templates.
-- Auto-reframe (subject tracking), text templates.
+- Object/subject tracking beyond faces, multi-subject reframing, manual tracking points.
 - Beat detection and auto-cut to music, silence removal, scene detection.
 - Sticker/emoji overlays, transitions library with presets, social aspect presets.
 
@@ -204,3 +226,13 @@ the identical UI can be wrapped as a Windows desktop app later without a rewrite
 
 Built with React 19, TypeScript, Vite, zustand, `mp4-muxer`, and `webm-muxer`.
 No analytics, no telemetry, no network calls at runtime.
+
+### Third-party assets
+
+- **MediaPipe BlazeFace** face detector (`public/models/face_detector.tflite`, Apache-2.0)
+  and the MediaPipe vision WASM runtime (Apache-2.0), synced from `node_modules` into
+  `public/vendor/` by `scripts/sync-mediapipe.mjs`.
+- **Whisper tiny.en** ONNX weights (MIT via OpenAI / onnx-community) are fetched on first
+  caption use, then cached by the browser.
+- Test fixtures include a public-domain official portrait and a public-domain JFK speech
+  sample; they are not shipped in the app bundle.

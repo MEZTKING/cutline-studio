@@ -2076,3 +2076,71 @@ input[type="color"] {
 .clip.caption .clip-label {
   color: #dbe7ff;
 }
+
+
+/* ---------- auto-reframe ---------- */
+.aspect-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+}
+
+.aspect-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 66px;
+  padding: 8px 4px 6px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-3);
+}
+
+.aspect-option:disabled {
+  opacity: 0.6;
+}
+
+.aspect-option.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.aspect-box {
+  display: block;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+.aspect-key {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.aspect-option.on .aspect-key {
+  color: var(--text);
+}
+
+.aspect-label {
+  font-size: 8px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+}
+
+@media (max-width: 520px) {
+  .aspect-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .aspect-option {
+    min-height: 58px;
+  }
+}

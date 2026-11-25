@@ -6,6 +6,7 @@ import type { MediaAsset } from '../core/types';
 import { importFile } from '../media/import';
 import { loadWorkspace, saveWorkspace } from '../persistence/db';
 import { useEditor } from '../state/store';
+import { AutoReframeDialog } from './AutoReframeDialog';
 import { CaptionsDialog } from './CaptionsDialog';
 import { ExportDialog } from './ExportDialog';
 import { Icon } from './icons';
@@ -147,6 +148,10 @@ export function App() {
         case 'c':
         case 'C':
           state.setCaptionsOpen(true);
+          break;
+        case 'r':
+        case 'R':
+          state.setReframeOpen(true);
           break;
         case 'Delete':
         case 'Backspace':
@@ -390,6 +395,7 @@ export function App() {
 
       <ExportDialog />
       <CaptionsDialog />
+      <AutoReframeDialog />
       <Toast />
     </div>
   );

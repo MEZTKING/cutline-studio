@@ -48,6 +48,7 @@ interface EditorState {
   mobilePanel: MobilePanel;
   exportOpen: boolean;
   captionsOpen: boolean;
+  reframeOpen: boolean;
 
   setProject: (p: Project, assets?: Record<string, MediaAsset>) => void;
   loadWorkspace: (project: Project, assets: MediaAsset[]) => void;
@@ -67,6 +68,8 @@ interface EditorState {
   setMobilePanel: (panel: MobilePanel) => void;
   setExportOpen: (open: boolean) => void;
   setCaptionsOpen: (open: boolean) => void;
+  setReframeOpen: (open: boolean) => void;
+  commitProject: (project: Project) => void;
   addCaptions: (segments: CaptionSegment[]) => number;
   addCaptionAtPlayhead: () => void;
   clearCaptions: () => void;
@@ -150,6 +153,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   mobilePanel: null,
   exportOpen: false,
   captionsOpen: false,
+  reframeOpen: false,
 
   setProject: (project, assets) => set((s) => ({ project, assets: assets ?? s.assets })),
   loadWorkspace: (project, assets) =>
@@ -225,6 +229,16 @@ export const useEditor = create<EditorState>((set, get) => ({
   setMobilePanel: (panel) => set({ mobilePanel: panel }),
   setExportOpen: (open) => set({ exportOpen: open }),
   setCaptionsOpen: (open) => set({ captionsOpen: open }),
+  setReframeOpen: (open) => set({ reframeOpen: open }),
+
+  commitProject: (project) =>
+    set((s) => ({
+      project,
+      past: pushHistory(s.past, s.project),
+      future: [],
+      playing: false,
+      selection: validateSelection(project, s.selection),
+    })),
 
   addCaptions: (segments) => {
     const state = get();
