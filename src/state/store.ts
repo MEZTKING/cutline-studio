@@ -39,6 +39,7 @@ interface EditorState {
   fineScrub: boolean;
   updateOpen: boolean;
   updateAvailable: DesktopUpdateInfo | null;
+  queueOpen: boolean;
   assetOrder: string[];
   playhead: number;
   playing: boolean;
@@ -60,6 +61,7 @@ interface EditorState {
   setFineScrub: (fine: boolean) => void;
   setUpdateOpen: (open: boolean) => void;
   setUpdateAvailable: (info: DesktopUpdateInfo | null) => void;
+  setQueueOpen: (open: boolean) => void;
   addLut: (lut: ProjectLut) => string;
   removeLut: (id: string) => void;
 
@@ -160,6 +162,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   fineScrub: false,
   updateOpen: false,
   updateAvailable: null,
+  queueOpen: false,
   assetOrder: [],
   playhead: 0,
   playing: false,
@@ -295,6 +298,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setFineScrub: (fine) => set({ fineScrub: fine }),
   setUpdateOpen: (open) => set({ updateOpen: open }),
   setUpdateAvailable: (info) => set({ updateAvailable: info }),
+  setQueueOpen: (open) => set({ queueOpen: open }),
 
   addLut: (lut) => {
     const id = uid('lut');

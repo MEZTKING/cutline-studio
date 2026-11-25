@@ -84,6 +84,8 @@ let activeAutomation = null;
 let automationWindow = null;
 let automationIpcReady = false;
 let automationSettled = null;
+const renderQueue = [];
+let renderQueueBusy = false;
 
 function mediaUrlFor(filePath) {
   return `cutline-media://file/${Buffer.from(path.resolve(filePath), 'utf8').toString('base64url')}`;
@@ -346,13 +348,19 @@ function publicJob(job) {
 }
 
 function prepareAutomationJob(input) {
-  const projectPath = path.resolve(String(input.projectPath || input.project || ''));
+  let projectPath = null;
+  let data = null;
+  if (input.data && input.data.format === 'cutline-project' && input.data.project) {
+    data = input.data;
+    projectPath = input.projectPath ? path.resolve(String(input.projectPath)) : null;
+  } else {
+    projectPath = path.resolve(String(input.projectPath || input.project || ''));
+    if (!fs.existsSync(projectPath)) throw new Error(`Project not found: ${projectPath}`);
+    data = readJsonSync(projectPath);
+    if (!data || data.format !== 'cutline-project' || !data.project) throw new Error('Not a Cutline project file.');
+  }
   const outputPath = path.resolve(String(input.outputPath || input.out || ''));
-  if (!input.projectPath && !input.project) throw new Error('projectPath is required.');
   if (!input.outputPath && !input.out) throw new Error('outputPath is required.');
-  if (!fs.existsSync(projectPath)) throw new Error(`Project not found: ${projectPath}`);
-  const data = readJsonSync(projectPath);
-  if (!data || data.format !== 'cutline-project' || !data.project) throw new Error('Not a Cutline project file.');
   for (const asset of data.assets || []) if (asset?.path) allowMedia(asset.path);
   const ext = path.extname(outputPath).toLowerCase();
   let format = input.format;
@@ -381,6 +389,83 @@ function prepareAutomationJob(input) {
       fileName: data.project.name || 'render',
     },
   };
+}
+
+function publicQueueJob(job) {
+  return {
+    id: job.id,
+    status: job.status,
+    progress: job.progress ?? 0,
+    phase: job.phase ?? 'Queued',
+    outputPath: job.outputPath,
+    bytes: job.bytes ?? null,
+    error: job.error ?? null,
+    settings: job.settings,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt ?? null,
+    finishedAt: job.finishedAt ?? null,
+  };
+}
+
+function emitQueue() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('queue:update', renderQueue.map(publicQueueJob));
+  }
+}
+
+function enqueueRenderJob(input) {
+  const merged = input && input.settings ? { ...input, ...input.settings } : input;
+  const job = prepareAutomationJob(merged);
+  job.status = 'queued';
+  renderQueue.push(job);
+  while (renderQueue.filter((j) => j.status === 'done' || j.status === 'error').length > 30) {
+    const idx = renderQueue.findIndex((j) => j.status === 'done' || j.status === 'error');
+    if (idx < 0) break;
+    renderQueue.splice(idx, 1);
+  }
+  emitQueue();
+  void pumpRenderQueue();
+  return job;
+}
+
+async function pumpRenderQueue() {
+  if (renderQueueBusy) return;
+  const job = renderQueue.find((j) => j.status === 'queued');
+  if (!job) return;
+  renderQueueBusy = true;
+  job.status = 'running';
+  job.startedAt = new Date().toISOString();
+  job.phase = 'Starting';
+  emitQueue();
+  try {
+    await runAutomationWorker(job, (progress) => {
+      job.progress = progress.percent;
+      job.phase = progress.phase;
+      emitQueue();
+    });
+    job.status = 'done';
+    job.progress = 100;
+    job.phase = 'Done';
+  } catch (err) {
+    job.status = 'error';
+    job.error = err instanceof Error ? err.message : String(err);
+    job.phase = 'Error';
+  } finally {
+    job.finishedAt = new Date().toISOString();
+    renderQueueBusy = false;
+    emitQueue();
+    void pumpRenderQueue();
+  }
+}
+
+async function chooseQueueOutput(name) {
+  const safe = String(name || 'render').replace(/[\\/:*?"<>|]+/g, '-');
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Render queue output',
+    defaultPath: path.join(app.getPath('videos'), `${safe}.webm`),
+    filters: [{ name: 'WebM video', extensions: ['webm'] }],
+  });
+  return result.canceled || !result.filePath ? null : result.filePath;
 }
 
 function ensureAutomationIpc() {
@@ -608,6 +693,7 @@ function buildMenu() {
         { label: 'Import Media…', accelerator: 'CmdOrCtrl+I', click: () => sendMenu('import-media') },
         { type: 'separator' },
         { label: 'Export…', accelerator: 'CmdOrCtrl+E', click: () => sendMenu('export') },
+        { label: 'Render Queue…', click: () => sendMenu('render-queue') },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -847,6 +933,7 @@ async function saveProjectPayload(data, { saveAs = false, path: explicitPath = n
 }
 
 function ipcHandlers() {
+  ensureAutomationIpc();
   ipcMain.handle('app:info', () => ({
     version: app.getVersion(),
     platform: process.platform,
@@ -1012,6 +1099,29 @@ function ipcHandlers() {
     await saveSettings({ lastProjectPath: null });
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setTitle('Cutline Studio');
     return { ok: true };
+  });
+
+  ipcMain.handle('queue:list', () => renderQueue.map(publicQueueJob));
+  ipcMain.handle('queue:add', async (_event, input) => {
+    try {
+      return publicQueueJob(enqueueRenderJob(input || {}));
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('queue:chooseOutput', async (_event, name) => chooseQueueOutput(name));
+  ipcMain.handle('queue:clear', () => {
+    for (let i = renderQueue.length - 1; i >= 0; i--) {
+      if (renderQueue[i].status === 'done' || renderQueue[i].status === 'error') renderQueue.splice(i, 1);
+    }
+    emitQueue();
+    return renderQueue.map(publicQueueJob);
+  });
+  ipcMain.handle('queue:remove', (_event, id) => {
+    const idx = renderQueue.findIndex((j) => j.id === id && j.status === 'queued');
+    if (idx >= 0) renderQueue.splice(idx, 1);
+    emitQueue();
+    return renderQueue.map(publicQueueJob);
   });
 
   ipcMain.handle('project:autosave', async (_event, data) => {

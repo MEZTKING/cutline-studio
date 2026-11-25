@@ -25,6 +25,7 @@ import { Timeline } from './Timeline';
 import { Toast } from './Toast';
 import { TopBar } from './TopBar';
 import { UpdatesDialog } from './UpdatesDialog';
+import { RenderQueueDialog } from './RenderQueueDialog';
 
 function useIsMobile(): boolean {
   const query = '(max-width: 980px)';
@@ -465,6 +466,9 @@ export function App() {
         case 'relink-media':
           void relinkMissingMedia();
           break;
+        case 'render-queue':
+          state.setQueueOpen(true);
+          break;
         case 'project-settings':
           state.select(null, null);
           state.setWorkspace('edit');
@@ -690,6 +694,7 @@ export function App() {
       )}
 
       <UpdatesDialog />
+      <RenderQueueDialog />
       <ExportDialog />
       <CaptionsDialog />
       <AutoReframeDialog />

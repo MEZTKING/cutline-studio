@@ -59,7 +59,8 @@ export type DesktopMenuCommand =
   | 'check-updates'
   | 'open-bundle'
   | 'save-bundle'
-  | 'relink-media';
+  | 'relink-media'
+  | 'render-queue';
 
 export interface NativeExportPayload {
   data: ArrayBuffer;
@@ -128,6 +129,20 @@ export interface DesktopRelinkResult {
   canceled?: boolean;
 }
 
+export interface DesktopQueueJob {
+  id: string;
+  status: 'queued' | 'running' | 'done' | 'error';
+  progress: number;
+  phase: string;
+  outputPath: string;
+  bytes: number | null;
+  error: string | null;
+  settings: { width: number; height: number; fps: number; quality: string; format: string; includeAudio: boolean; fileName: string };
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
 export interface CutlineDesktopApi {
   isDesktop: true;
   platform: string;
@@ -144,6 +159,12 @@ export interface CutlineDesktopApi {
   saveBundle(data: DesktopProjectData): Promise<{ path: string; bundleRoot: string; bundle: true } | { error: string } | null>;
   saveBundleTo(data: DesktopProjectData, root: string): Promise<{ path: string; bundleRoot: string; bundle: true } | { error: string }>;
   relinkMedia(assets: { id: string; name: string; path: string }[]): Promise<DesktopRelinkResult | { error: string }>;
+  queueList(): Promise<DesktopQueueJob[]>;
+  queueAdd(data: DesktopProjectData, settings: { width: number; height: number; fps: number; quality: 'fast' | 'balanced' | 'high'; format: 'auto' | 'mp4' | 'webm'; includeAudio: boolean }, outputPath: string): Promise<DesktopQueueJob | { error: string }>;
+  queueChooseOutput(name: string): Promise<string | null>;
+  queueClear(): Promise<DesktopQueueJob[]>;
+  queueRemove(id: string): Promise<DesktopQueueJob[]>;
+  onQueueUpdate(callback: (jobs: DesktopQueueJob[]) => void): () => void;
   saveProject(data: DesktopProjectData, options?: { saveAs?: boolean }): Promise<{ path: string } | { error: string } | null>;
   saveProjectTo(data: DesktopProjectData, path: string): Promise<{ path: string } | { error: string }>;
   autosave(data: DesktopProjectData): Promise<{ ok: boolean }>;

@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('cutlineDesktop', {
   saveBundle: (data) => ipcRenderer.invoke('project:saveBundle', data),
   saveBundleTo: (data, root) => ipcRenderer.invoke('project:saveBundleTo', data, root),
   relinkMedia: (assets) => ipcRenderer.invoke('project:relink', assets),
+  queueList: () => ipcRenderer.invoke('queue:list'),
+  queueAdd: (data, settings, outputPath) => ipcRenderer.invoke('queue:add', { data, settings, outputPath }),
+  queueChooseOutput: (name) => ipcRenderer.invoke('queue:chooseOutput', name),
+  queueClear: () => ipcRenderer.invoke('queue:clear'),
+  queueRemove: (id) => ipcRenderer.invoke('queue:remove', id),
   saveProject: (data, options) => ipcRenderer.invoke('project:save', data, options),
   saveProjectTo: (data, file) => ipcRenderer.invoke('project:saveTo', data, file),
   autosave: (data) => ipcRenderer.invoke('project:autosave', data),
@@ -49,6 +54,11 @@ contextBridge.exposeInMainWorld('cutlineDesktop', {
     const handler = (_event, progress) => callback(progress);
     ipcRenderer.on('update:progress', handler);
     return () => ipcRenderer.removeListener('update:progress', handler);
+  },
+  onQueueUpdate: (callback) => {
+    const handler = (_event, jobs) => callback(jobs);
+    ipcRenderer.on('queue:update', handler);
+    return () => ipcRenderer.removeListener('queue:update', handler);
   },
   onUpdateAvailable: (callback) => {
     const handler = (_event, info) => callback(info);
