@@ -5,13 +5,14 @@ import { defaultInsertStart } from '../core/placement';
 import type { MediaAsset } from '../core/types';
 import { Icon } from './icons';
 
-export function MediaBin({ showHead = true, onImport }: { showHead?: boolean; onImport: () => void }) {
+export function MediaBin({ showHead = true, onImport, onRelink }: { showHead?: boolean; onImport: () => void; onRelink?: () => void }) {
   const assets = useEditor((s) => s.assets);
   const order = useEditor((s) => s.assetOrder);
   const addClipToTrack = useEditor((s) => s.addClipToTrack);
   const removeAsset = useEditor((s) => s.removeAsset);
   const notify = useEditor((s) => s.notify);
   const list = order.map((id) => assets[id]).filter(Boolean);
+  const offlineCount = list.filter((a) => a.offline).length;
 
   const addToTimeline = (asset: MediaAsset) => {
     const state = useEditor.getState();
@@ -49,18 +50,37 @@ export function MediaBin({ showHead = true, onImport }: { showHead?: boolean; on
           </div>
         ) : (
           <>
+            {offlineCount > 0 && (
+              <div className="offline-banner">
+                <span>
+                  <Icon name="flag" size={13} /> {offlineCount} media file{offlineCount === 1 ? '' : 's'} offline
+                </span>
+                {onRelink && (
+                  <button className="btn sm" onClick={onRelink}>
+                    <Icon name="link" size={12} /> Relink…
+                  </button>
+                )}
+              </div>
+            )}
             <div className="asset-grid">
               {list.map((asset) => (
                 <div
                   key={asset.id}
-                  className="asset-card"
-                  draggable
+                  className={`asset-card ${asset.offline ? 'offline' : ''}`}
+                  draggable={!asset.offline}
                   onDragStart={(e) => {
+                    if (asset.offline) return;
                     e.dataTransfer.setData('text/x-cutline-asset', asset.id);
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
-                  onClick={() => addToTimeline(asset)}
-                  title={`Tap to add ${asset.name} at the playhead`}
+                  onClick={() => {
+                    if (asset.offline) {
+                      notify(`“${asset.name}” is offline. Use Relink to locate it.`, 'error');
+                      return;
+                    }
+                    addToTimeline(asset);
+                  }}
+                  title={asset.offline ? `${asset.name} — offline` : `Tap to add ${asset.name} at the playhead`}
                 >
                   <div className="asset-thumb" style={asset.thumbnail ? { backgroundImage: `url(${asset.thumbnail})` } : undefined}>
                     {!asset.thumbnail && <Icon name={asset.kind === 'audio' ? 'music' : asset.kind === 'image' ? 'image' : 'film'} size={18} />}
@@ -68,6 +88,7 @@ export function MediaBin({ showHead = true, onImport }: { showHead?: boolean; on
                       <Icon name={asset.kind === 'audio' ? 'music' : asset.kind === 'image' ? 'image' : 'film'} size={9} />
                       {asset.kind === 'video' ? 'VID' : asset.kind === 'audio' ? 'AUD' : 'IMG'}
                     </span>
+                    {asset.offline && <span className="asset-offline">OFFLINE</span>}
                     <span className="asset-dur">{formatDuration(asset.duration)}</span>
                     <div className="asset-add">
                       <Icon name="plus" size={10} /> Add to timeline

@@ -8,7 +8,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.10.0 — two builds from one engine, now with a headless render CLI and localhost automation API, linked A/V editing, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.11.0 — two builds from one engine, now with portable project bundles + relink, a headless render CLI and localhost automation API, linked A/V editing, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -36,7 +36,7 @@ small IPC bridge. The web build remains zero-install and unchanged.
 | **Color** | GPU primary grade, lift/gamma/gain wheels, 3D LUTs, live scopes, bypass | Curves, HSL qualifier, power windows, node graph, keyframed grades, HDR |
 | **Audio** | dB gain, pan, 3-band EQ, compressor, normalize, fades, presets, solo/mute | Buses, ducking, 5.1, denoise |
 | **Effects** | Ten transitions, auto-reframe, titles, captions | Keying, masks, motion tracking, Fusion-style node effects |
-| **Media** | Disk streaming, `.cutline` projects, autosave | Proxies, bundles/relink, background workers, media library |
+| **Media** | Disk streaming, portable bundles + folder relink, autosave | Proxies, ZIP delivery, background workers, media library |
 | **Updates** | Auto-check, SHA-256 verified download, portable self-replace | Code-signed NSIS updater, delta downloads |
 | **Delivery** | WebCodecs + FFmpeg masters, headless CLI, localhost job API | YouTube/Vimeo publishing, render queue, watch folders, presets |
 
@@ -58,6 +58,32 @@ This is the honest shape of "DaVinci + Premiere": each pillar needs real enginee
 built so pillars can land independently on the same project model and renderer.
 
 ![Cutline Heavy](docs/screens/desktop-heavy.png)
+
+## Portable project bundles
+
+A normal `.cutline` project references media by absolute path. A **bundle** is a folder that
+owns its media:
+
+```text
+My Project.cutlinebundle/
+  bundle.json          marker + manifest
+  project.cutline      project JSON (relative media paths)
+  media/               copied source files
+```
+
+- **File → Save Project as Bundle…** copies every used media file into `media/`, writes relative
+  paths, and switches the session to bundle mode. Subsequent **Save** updates the bundle and
+  copies any newly imported media.
+- **File → Open Project Bundle…** opens a bundle folder. It can be moved or renamed anywhere and
+  still relink automatically.
+- **File → Relink Media…** lets you choose the folder that contains missing files; Cutline
+  matches by filename and restores the media. Offline assets are clearly marked in the Media bin.
+- `File → Save As…` writes a normal single `.cutline` file and leaves bundle mode.
+
+Project bundles are folders (not ZIPs), so media remains streamable and proxies can live beside
+the sources later. A bundle copies full-resolution media; proxy-only bundles are on the roadmap.
+
+![Project bundle](docs/screens/desktop-bundle.png)
 
 ## Automation: CLI + local API
 
@@ -396,7 +422,8 @@ SRT round-trip, auto-reframe with a moving face, titles and decimal inputs, expo
 cancel-and-retry, audio pan/mute/presets through export, detach/link, roll/slip, J/L trims,
 fine scrub + thumbnails,
 source auto-match at 24 fps, fullscreen display-resolution preview, detach/link, roll/slip,
-**headless CLI + local API renders with audio**, mobile/landscape layout, and the GPU colour page (LUT application,
+**portable bundles with media copying/relative paths/move-and-reopen**, **headless CLI + local API
+renders with audio**, mobile/landscape layout, and the GPU colour page (LUT application,
 channel order, bypass, scopes, burned-in export, persistence, phone sheet). Reports are
 written to `test-results/`.
 
@@ -407,6 +434,7 @@ DISPLAY=:99 npm run test:updater # auto-check, dialog, verified download (Electr
 DISPLAY=:99 npm run test:auto    # 24 fps auto-match, override, fullscreen canvas (headed)
 npm run test:edit                # detach/link, J/L trims, roll, slip
 npm run test:cli                 # headless render + local API (Electron, needs a display)
+npm run test:desktop:bundle      # save/move/reopen a bundle (Electron)
 DISPLAY=:99 npm run test:desktop:fps # exact FFmpeg fps + auto-match in Electron
 ```
 
@@ -444,6 +472,7 @@ it, please open an issue first.
 - Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
   media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
 - The **normal** preview is capped at 1280 px for performance; fullscreen uses display resolution (up to 4K). Neither changes export resolution.
+- Bundles copy full-resolution media; there is no proxy-only bundle or ZIP bundle yet. Relink matches by filename inside the chosen folder.
 - Automation v1 renders the browser containers (MP4/WebM); the CLI does not yet request ProRes/HEVC masters or manage a persistent render queue. The API is local-only and renders one job at a time.
 - Direct publishing is not implemented. YouTube requires a Google OAuth client, consent-screen verification, and API quota; Vimeo needs an access token; TikTok/Instagram require app review and business accounts.
 - Browser frame-rate detection is an estimate from frame timestamps; the Windows build asks FFmpeg for the exact source fps.

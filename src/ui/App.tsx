@@ -350,6 +350,63 @@ export function App() {
     void desktop.title(state.project.name);
   }
 
+  async function saveDesktopBundle() {
+    if (!desktop) return;
+    const state = useEditor.getState();
+    const data = serializeProjectForDesktop(state.project, state.assets);
+    const result = await desktop.saveBundle(data);
+    if (!result) return;
+    if ('error' in result) {
+      state.notify(result.error, 'error');
+      return;
+    }
+    state.notify(`Saved bundle to ${result.bundleRoot}`, 'success');
+    void desktop.title(state.project.name);
+  }
+
+  async function openDesktopBundle() {
+    if (!desktop) return;
+    const result = await desktop.openBundle();
+    if (!result) return;
+    if ('error' in result) {
+      useEditor.getState().notify(result.error, 'error');
+      return;
+    }
+    const hydrated = await hydrateDesktopProject(result.data);
+    useEditor.getState().loadWorkspace(hydrated.project, hydrated.assets);
+    const offline = result.missing?.length ?? 0;
+    useEditor.getState().notify(
+      offline ? `Opened ${hydrated.project.name} — ${offline} media file(s) offline. Use File → Relink Media…` : `Opened bundle ${hydrated.project.name}`,
+      offline ? 'info' : 'success',
+    );
+    void desktop.title(hydrated.project.name);
+  }
+
+  async function relinkMissingMedia() {
+    if (!desktop) return;
+    const state = useEditor.getState();
+    const list = Object.values(state.assets)
+      .filter((a) => a.path)
+      .map((a) => ({ id: a.id, name: a.name, path: a.path! }));
+    if (!list.length) {
+      state.notify('This project has no desktop media to relink.', 'info');
+      return;
+    }
+    const result = await desktop.relinkMedia(list);
+    if ('error' in result) {
+      state.notify(result.error, 'error');
+      return;
+    }
+    if (result.matches.length) {
+      state.relinkAssets(result.matches);
+      state.notify(`Relinked ${result.matches.length} media file(s). Save the project to keep the new paths.`, 'success');
+    } else if (result.message) {
+      state.notify(result.message, 'info');
+    } else if (!result.canceled) {
+      state.notify(`No matching files found in that folder (scanned ${result.scanned}).`, 'error');
+    }
+  }
+
   async function openDesktopProject(filePath?: string) {
     if (!desktop) return;
     const result = filePath ? await desktop.openProjectPath(filePath) : await desktop.openProject();
@@ -398,6 +455,15 @@ export function App() {
           break;
         case 'export':
           state.setExportOpen(true);
+          break;
+        case 'open-bundle':
+          void openDesktopBundle();
+          break;
+        case 'save-bundle':
+          void saveDesktopBundle();
+          break;
+        case 'relink-media':
+          void relinkMissingMedia();
           break;
         case 'project-settings':
           state.select(null, null);
@@ -512,7 +578,7 @@ export function App() {
       <div className="workspace">
         {!isMobile && (
           <aside className="panel">
-            <MediaBin onImport={openPicker} />
+            <MediaBin onImport={openPicker} onRelink={() => void relinkMissingMedia()} />
           </aside>
         )}
 
@@ -583,7 +649,7 @@ export function App() {
           </div>
           <div className="sheet-scroll">
             {mobilePanel === 'media' ? (
-              <MediaBin showHead={false} onImport={openPicker} />
+              <MediaBin showHead={false} onImport={openPicker} onRelink={() => void relinkMissingMedia()} />
             ) : mobilePanel === 'color' ? (
               <ColorWorkspace showHead={false} />
             ) : (

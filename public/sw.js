@@ -1,5 +1,5 @@
 /* Cutline Studio — offline shell (stale-while-revalidate). */
-const CACHE = 'cutline-v11';
+const CACHE = 'cutline-v12';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {

@@ -5,6 +5,7 @@ export interface DesktopMediaEntry {
   url: string;
   name: string;
   fps?: number;
+  missing?: boolean;
 }
 
 export interface DesktopAssetRecord {
@@ -19,6 +20,7 @@ export interface DesktopAssetRecord {
   path?: string;
   thumbnail?: string;
   peaks?: number[];
+  missing?: boolean;
 }
 
 export interface DesktopProjectData {
@@ -54,7 +56,10 @@ export type DesktopMenuCommand =
   | 'undo'
   | 'redo'
   | 'project-settings'
-  | 'check-updates';
+  | 'check-updates'
+  | 'open-bundle'
+  | 'save-bundle'
+  | 'relink-media';
 
 export interface NativeExportPayload {
   data: ArrayBuffer;
@@ -101,6 +106,28 @@ export interface DesktopUpdateConfig {
   platform: string;
 }
 
+export interface DesktopBundleOpen {
+  path: string;
+  data: DesktopProjectData;
+  bundleRoot: string;
+  missing: string[];
+}
+
+export interface DesktopRelinkMatch {
+  id: string;
+  path: string;
+  url: string;
+  name: string;
+}
+
+export interface DesktopRelinkResult {
+  matches: DesktopRelinkMatch[];
+  scanned: number;
+  folder?: string;
+  message?: string;
+  canceled?: boolean;
+}
+
 export interface CutlineDesktopApi {
   isDesktop: true;
   platform: string;
@@ -111,7 +138,12 @@ export interface CutlineDesktopApi {
   pathForFile(file: File): string;
   openProject(): Promise<{ path: string; data: DesktopProjectData } | { error: string } | null>;
   newProject(): Promise<{ ok: boolean }>;
-  openProjectPath(path: string): Promise<{ path: string; data: DesktopProjectData } | { error: string } | null>;
+  openProjectPath(path: string): Promise<{ path: string; data: DesktopProjectData; bundleRoot?: string; missing?: string[] } | { error: string } | null>;
+  openBundle(): Promise<DesktopBundleOpen | { error: string } | null>;
+  openBundlePath(root: string): Promise<DesktopBundleOpen | { error: string } | null>;
+  saveBundle(data: DesktopProjectData): Promise<{ path: string; bundleRoot: string; bundle: true } | { error: string } | null>;
+  saveBundleTo(data: DesktopProjectData, root: string): Promise<{ path: string; bundleRoot: string; bundle: true } | { error: string }>;
+  relinkMedia(assets: { id: string; name: string; path: string }[]): Promise<DesktopRelinkResult | { error: string }>;
   saveProject(data: DesktopProjectData, options?: { saveAs?: boolean }): Promise<{ path: string } | { error: string } | null>;
   saveProjectTo(data: DesktopProjectData, path: string): Promise<{ path: string } | { error: string }>;
   autosave(data: DesktopProjectData): Promise<{ ok: boolean }>;
@@ -181,9 +213,11 @@ export async function hydrateDesktopProject(
   const registered = paths.length ? await api.registerMedia(paths) : [];
   const urlByPath = new Map(registered.map((entry) => [entry.path, entry.url]));
   const fpsByPath = new Map(registered.map((entry) => [entry.path, entry.fps]));
+  const missingByPath = new Map(registered.map((entry) => [entry.path, entry.missing]));
   const assets: MediaAsset[] = records.map((record) => ({
     ...record,
     fps: record.fps ?? (record.path ? fpsByPath.get(record.path) : undefined),
+    offline: Boolean(record.missing || (record.path ? missingByPath.get(record.path) : false)),
     url: record.path ? urlByPath.get(record.path) ?? mediaUrlForPath(record.path) : '',
   }));
   return { project: data.project, assets };

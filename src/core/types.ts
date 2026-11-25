@@ -19,6 +19,8 @@ export interface MediaAsset {
   url: string;
   /** Absolute path when running inside the desktop shell. */
   path?: string;
+  /** Desktop asset could not be found on disk. */
+  offline?: boolean;
   file?: File | Blob;
   thumbnail?: string;
   /** Decoded audio, kept in memory only. */

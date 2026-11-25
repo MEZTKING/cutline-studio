@@ -24,6 +24,7 @@ const { pathToFileURL } = require('node:url');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const { parseCli, startApiServer, newToken, HELP } = require('./cli.cjs');
+const { isBundleRoot, bundleRootForProject, writeBundle, readBundle } = require('./bundle.cjs');
 const { Updater } = require('./updater.cjs');
 
 app.setName('Cutline Studio');
@@ -77,6 +78,7 @@ protocol.registerSchemesAsPrivileged([
 const allowedMedia = new Set();
 let mainWindow = null;
 let currentProjectPath = null;
+let currentBundleRoot = null;
 let exporting = false;
 let activeAutomation = null;
 let automationWindow = null;
@@ -133,11 +135,15 @@ function probeFps(file) {
 
 async function describeMedia(files) {
   const list = (Array.isArray(files) ? files : []).filter((file) => typeof file === 'string' && file.length);
-  const entries = list.map((file) => ({
-    path: path.resolve(file),
-    url: mediaUrlFor(allowMedia(file)),
-    name: path.basename(file),
-  }));
+  const entries = list.map((file) => {
+    const resolved = path.resolve(file);
+    return {
+      path: resolved,
+      url: mediaUrlFor(allowMedia(resolved)),
+      name: path.basename(resolved),
+      missing: !fs.existsSync(resolved),
+    };
+  });
   await Promise.all(
     entries.map(async (entry) => {
       const fps = await probeFps(entry.path);
@@ -591,10 +597,13 @@ function buildMenu() {
       submenu: [
         { label: 'New Project', accelerator: 'CmdOrCtrl+N', click: () => sendMenu('new-project') },
         { label: 'Open Project…', accelerator: 'CmdOrCtrl+O', click: () => sendMenu('open-project') },
+        { label: 'Open Project Bundle…', accelerator: 'CmdOrCtrl+Shift+O', click: () => sendMenu('open-bundle') },
+        { label: 'Relink Media…', click: () => sendMenu('relink-media') },
         { label: 'Project Settings…', accelerator: 'CmdOrCtrl+,', click: () => sendMenu('project-settings') },
         { type: 'separator' },
         { label: 'Save Project', accelerator: 'CmdOrCtrl+S', click: () => sendMenu('save-project') },
         { label: 'Save Project As…', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenu('save-project-as') },
+        { label: 'Save Project as Bundle…', accelerator: 'CmdOrCtrl+Shift+B', click: () => sendMenu('save-bundle') },
         { type: 'separator' },
         { label: 'Import Media…', accelerator: 'CmdOrCtrl+I', click: () => sendMenu('import-media') },
         { type: 'separator' },
@@ -690,17 +699,36 @@ function createWindow() {
   }
 }
 
+async function openBundleFile(root) {
+  const bundle = readBundle(root);
+  for (const asset of bundle.data.assets || []) {
+    if (asset?.path) allowMedia(asset.path);
+  }
+  currentBundleRoot = bundle.root;
+  currentProjectPath = bundle.projectPath;
+  await saveSettings({ lastProjectPath: bundle.root });
+  return { path: bundle.projectPath, data: bundle.data, bundleRoot: bundle.root, missing: bundle.missing };
+}
+
 async function openProjectFile(file) {
-  const payload = readJsonSync(file);
+  const resolved = path.resolve(file);
+  if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+    if (!isBundleRoot(resolved)) throw new Error('That folder is not a Cutline project bundle.');
+    return openBundleFile(resolved);
+  }
+  const bundleRoot = bundleRootForProject(resolved);
+  if (bundleRoot) return openBundleFile(bundleRoot);
+  const payload = readJsonSync(resolved);
   if (!payload || payload.format !== 'cutline-project' || !payload.project) {
     throw new Error('That is not a Cutline project file.');
   }
   for (const asset of payload.assets || []) {
     if (asset && asset.path) allowMedia(asset.path);
   }
-  currentProjectPath = file;
-  await saveSettings({ lastProjectPath: file });
-  return { path: file, data: payload };
+  currentBundleRoot = null;
+  currentProjectPath = resolved;
+  await saveSettings({ lastProjectPath: resolved });
+  return { path: resolved, data: payload };
 }
 
 async function chooseProject() {
@@ -716,8 +744,86 @@ async function chooseProject() {
   return openProjectFile(result.filePaths[0]);
 }
 
+async function chooseBundle() {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Open Cutline project bundle',
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  return openBundleFile(result.filePaths[0]);
+}
+
+async function saveBundlePayload(data, { path: explicitPath = null, ask = false } = {}) {
+  if (!data || data.format !== 'cutline-project') throw new Error('Invalid project payload.');
+  let root = explicitPath || (ask ? null : currentBundleRoot);
+  if (!root) {
+    const suggested = `${(data.project?.name || 'Untitled').replace(/[\\/:*?"<>|]+/g, '-')}.cutlinebundle`;
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save Cutline project bundle',
+      defaultPath: path.join(app.getPath('documents'), suggested),
+      filters: [{ name: 'Cutline project bundle', extensions: ['cutlinebundle'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    root = result.filePath;
+  }
+  root = path.resolve(root);
+  if (!root.toLowerCase().endsWith('.cutlinebundle')) root += '.cutlinebundle';
+  const bundle = await writeBundle(root, data);
+  await writeJsonAtomic(autosaveFile(), data);
+  currentBundleRoot = bundle.root;
+  currentProjectPath = bundle.projectPath;
+  await saveSettings({ lastProjectPath: bundle.root });
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setTitle(`${data.project?.name || 'Untitled'} — Cutline Studio`);
+  return { path: bundle.projectPath, bundleRoot: bundle.root, bundle: true };
+}
+
+async function indexFolder(root, depth = 0, map = new Map()) {
+  if (depth > 8) return map;
+  let entries;
+  try {
+    entries = await fsp.readdir(root, { withFileTypes: true });
+  } catch {
+    return map;
+  }
+  for (const entry of entries) {
+    const full = path.join(root, entry.name);
+    if (entry.isFile()) {
+      const key = entry.name.toLowerCase();
+      if (!map.has(key)) map.set(key, full);
+    } else if (entry.isDirectory() && !entry.name.startsWith('.')) {
+      await indexFolder(full, depth + 1, map);
+    }
+  }
+  return map;
+}
+
+async function relinkMedia(assetList) {
+  const list = Array.isArray(assetList) ? assetList.filter((a) => a && a.id && a.path) : [];
+  const missing = list.filter((a) => !fs.existsSync(path.resolve(a.path)));
+  if (!missing.length) return { matches: [], scanned: 0, message: 'No media is offline.' };
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Locate the folder containing the missing media',
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || !result.filePaths[0]) return { matches: [], scanned: 0, canceled: true };
+  const root = result.filePaths[0];
+  const index = await indexFolder(root);
+  const matches = [];
+  for (const asset of missing) {
+    const key = path.basename(asset.path).toLowerCase();
+    const found = index.get(key);
+    if (!found) continue;
+    const resolved = path.resolve(found);
+    allowMedia(resolved);
+    matches.push({ id: asset.id, path: resolved, url: mediaUrlFor(resolved), name: path.basename(resolved) });
+  }
+  return { matches, scanned: index.size, folder: root };
+}
+
 async function saveProjectPayload(data, { saveAs = false, path: explicitPath = null } = {}) {
   if (!data || data.format !== 'cutline-project') throw new Error('Invalid project payload.');
+  if (currentBundleRoot && !saveAs && !explicitPath) return saveBundlePayload(data, { path: currentBundleRoot });
+  if (explicitPath && String(explicitPath).toLowerCase().endsWith('.cutlinebundle')) return saveBundlePayload(data, { path: explicitPath });
   let target = explicitPath || currentProjectPath;
   if (!target || saveAs) {
     const suggested = `${(data.project?.name || 'Untitled').replace(/[\\/:*?"<>|]+/g, '-')}.cutline`;
@@ -732,6 +838,7 @@ async function saveProjectPayload(data, { saveAs = false, path: explicitPath = n
   data.savedAt = Date.now();
   await writeJsonAtomic(target, data);
   await writeJsonAtomic(autosaveFile(), data);
+  currentBundleRoot = null;
   currentProjectPath = target;
   await saveSettings({ lastProjectPath: target });
   const parsed = path.parse(target);
@@ -835,6 +942,46 @@ function ipcHandlers() {
     }
   });
 
+  ipcMain.handle('project:openBundle', async () => {
+    try {
+      return await chooseBundle();
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('project:openBundlePath', async (_event, root) => {
+    try {
+      return await openBundleFile(root);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('project:saveBundle', async (_event, data) => {
+    try {
+      return await saveBundlePayload(data, { ask: true });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('project:saveBundleTo', async (_event, data, root) => {
+    try {
+      return await saveBundlePayload(data, { path: root });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('project:relink', async (_event, assetList) => {
+    try {
+      return await relinkMedia(assetList);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle('project:openPath', async (_event, file) => {
     try {
       return await openProjectFile(file);
@@ -861,6 +1008,7 @@ function ipcHandlers() {
 
   ipcMain.handle('project:new', async () => {
     currentProjectPath = null;
+    currentBundleRoot = null;
     await saveSettings({ lastProjectPath: null });
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setTitle('Cutline Studio');
     return { ok: true };

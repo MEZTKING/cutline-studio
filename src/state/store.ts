@@ -73,6 +73,7 @@ interface EditorState {
   addAssets: (assets: MediaAsset[]) => void;
   setAssetAudio: (assetId: string, buffer: AudioBuffer, peaks: number[]) => void;
   removeAsset: (assetId: string) => void;
+  relinkAssets: (matches: { id: string; path: string; url: string }[]) => void;
 
   setPlayhead: (t: number) => void;
   setPlaying: (playing: boolean) => void;
@@ -240,6 +241,25 @@ export const useEditor = create<EditorState>((set, get) => ({
         },
       };
     }),
+  relinkAssets: (matches) =>
+    set((s) => {
+      if (!matches.length) return s;
+      const assets = { ...s.assets };
+      for (const match of matches) {
+        const current = assets[match.id];
+        if (!current) continue;
+        assets[match.id] = {
+          ...current,
+          path: match.path,
+          url: match.url,
+          offline: false,
+          audioBuffer: undefined,
+          peaks: undefined,
+        };
+      }
+      return { assets };
+    }),
+
   removeAsset: (assetId) =>
     set((s) => {
       const aspects = s.assets[assetId];
