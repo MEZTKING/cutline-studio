@@ -203,6 +203,7 @@ interface AssetSource {
   url: string;
   file?: File | Blob;
   path?: string;
+  fps?: number;
 }
 
 async function decodeAudioFromSource(source: AssetSource, allowFetchFallback: boolean): Promise<AudioBuffer | null> {
@@ -222,6 +223,67 @@ async function decodeAudioFromSource(source: AssetSource, allowFetchFallback: bo
   return null;
 }
 
+const STANDARD_FPS = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120];
+
+/** Estimate source fps from presentation timestamps. Falls back to undefined. */
+async function probeVideoFps(video: HTMLVideoElement): Promise<number | undefined> {
+  if (typeof video.requestVideoFrameCallback !== 'function') return undefined;
+  const original = video.currentTime;
+  const times: number[] = [];
+  try {
+    video.muted = true;
+    video.playsInline = true;
+    await video.play();
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const timer = setTimeout(done, 1800);
+      const onFrame = (_now: number, meta: any) => {
+        if (settled) return;
+        if (typeof meta?.mediaTime === 'number') times.push(meta.mediaTime);
+        if (times.length >= 24) {
+          clearTimeout(timer);
+          done();
+          return;
+        }
+        video.requestVideoFrameCallback(onFrame);
+      };
+      video.requestVideoFrameCallback(onFrame);
+    });
+  } catch {
+    /* autoplay refused or frame callbacks unavailable */
+  } finally {
+    video.pause();
+    try {
+      if (Number.isFinite(original)) video.currentTime = original;
+    } catch {
+      /* not seekable */
+    }
+  }
+  if (times.length < 6) return undefined;
+  const deltas: number[] = [];
+  for (let i = 1; i < times.length; i++) {
+    const d = times[i] - times[i - 1];
+    if (d > 0.005 && d < 0.2) deltas.push(d);
+  }
+  if (deltas.length < 5) return undefined;
+  deltas.sort((a, b) => a - b);
+  const median = deltas[Math.floor(deltas.length / 2)];
+  if (!median) return undefined;
+  let fps = 1 / median;
+  const standard = STANDARD_FPS.reduce(
+    (best, n) => (Math.abs(n - fps) / n < Math.abs(best - fps) / best ? n : best),
+    STANDARD_FPS[0],
+  );
+  if (Math.abs(standard - fps) / standard <= 0.02) fps = standard;
+  else fps = Math.round(fps * 100) / 100;
+  return fps > 0 && fps <= 240 ? fps : undefined;
+}
+
 async function importSource(source: AssetSource, onProgress?: (p: ImportProgress) => void): Promise<MediaAsset> {
   onProgress?.({ name: source.name, index: 0, total: 1 });
 
@@ -236,6 +298,7 @@ async function importSource(source: AssetSource, onProgress?: (p: ImportProgress
     url: source.url,
     file: source.file,
     path: source.path,
+    fps: source.fps,
   };
 
   if (source.kind === 'video') {
@@ -267,6 +330,7 @@ async function importSource(source: AssetSource, onProgress?: (p: ImportProgress
       const ctx = canvas.getContext('2d')!;
       if (v.readyState >= 2) ctx.drawImage(v, 0, 0, tw, th);
       base.thumbnail = canvas.toDataURL('image/jpeg', 0.72);
+      if (!base.fps) base.fps = await probeVideoFps(v);
     } finally {
       v.pause();
       v.removeAttribute('src');
@@ -313,13 +377,14 @@ export interface NativeMediaEntry {
   path: string;
   url: string;
   name: string;
+  fps?: number;
 }
 
 /** Import a file that stays on disk (desktop shell) and streams over the media protocol. */
 export async function importNative(entry: NativeMediaEntry, onProgress?: (p: ImportProgress) => void): Promise<MediaAsset> {
   const kind = classifyName(entry.name);
   if (!kind) throw new Error(`${entry.name}: unsupported file type.`);
-  return importSource({ name: entry.name, kind, url: entry.url, path: entry.path }, onProgress);
+  return importSource({ name: entry.name, kind, url: entry.url, path: entry.path, fps: entry.fps }, onProgress);
 }
 
 export async function ensureAudioDecoded(asset: MediaAsset): Promise<AudioBuffer | null> {

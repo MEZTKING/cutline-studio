@@ -180,6 +180,8 @@ function labelToProp(label: string): AnimatableProp {
   return PROP_BY_LABEL[label] ?? 'opacity';
 }
 
+const FPS_OPTIONS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60];
+
 const RESOLUTIONS: { label: string; w: number; h: number }[] = [
   { label: '1080p · 16:9', w: 1920, h: 1080 },
   { label: '4K · 16:9', w: 3840, h: 2160 },
@@ -721,8 +723,15 @@ function ClipPanel({ clipId }: { clipId: string }) {
 
 function ProjectPanel() {
   const project = useEditor((s) => s.project);
+  const assets = useEditor((s) => s.assets);
+  const assetOrder = useEditor((s) => s.assetOrder);
   const setProjectSettings = useEditor((s) => s.setProjectSettings);
+  const matchProjectToSource = useEditor((s) => s.matchProjectToSource);
   const [name, setName] = useState(project.name);
+  const source =
+    assetOrder.map((id) => assets[id]).find((a) => a?.kind === 'video' && a.width > 0 && a.height > 0) ??
+    assetOrder.map((id) => assets[id]).find((a) => a?.kind === 'image' && a.width > 0 && a.height > 0);
+  const fpsOptions = FPS_OPTIONS.includes(project.fps) ? FPS_OPTIONS : [...FPS_OPTIONS, project.fps].sort((a, b) => a - b);
 
   useEffect(() => setName(project.name), [project.name]);
 
@@ -739,7 +748,7 @@ function ProjectPanel() {
         <div style={{ minWidth: 0 }}>
           <div className="clip-card-name">Project settings</div>
           <div className="clip-card-sub">
-            {project.width}×{project.height} · {project.fps} fps
+            {project.width}×{project.height} · {project.fps} fps{project.autoSettings ? ' · auto' : ''}
           </div>
         </div>
       </div>
@@ -802,13 +811,32 @@ function ProjectPanel() {
               state.endGesture();
             }}
           >
-            {[23.976, 24, 25, 30, 50, 60].map((f) => (
+            {fpsOptions.map((f) => (
               <option key={f} value={f}>
                 {f} fps
               </option>
             ))}
           </select>
         </div>
+        <div className="hint">
+          {project.autoSettings
+            ? 'Auto: the canvas and frame rate follow the first video or image you import.'
+            : 'Custom canvas and frame rate.'}
+        </div>
+        {source && (
+          <button
+            className="btn sm"
+            onClick={() => {
+              const state = useEditor.getState();
+              state.beginGesture();
+              matchProjectToSource(source.width, source.height, source.fps);
+              state.endGesture();
+            }}
+          >
+            <Icon name="reframe" size={12} /> Match source · {source.width}×{source.height}
+            {source.fps ? ` @ ${source.fps}` : ''}
+          </button>
+        )}
       </Section>
 
       <Section title="Reframe" defaultOpen={false}>

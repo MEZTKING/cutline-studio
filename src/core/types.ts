@@ -11,6 +11,8 @@ export interface MediaAsset {
   kind: MediaKind;
   /** Source duration in seconds. Images get a nominal 10s. */
   duration: number;
+  /** Detected source frame rate, when the browser can measure it. */
+  fps?: number;
   width: number;
   height: number;
   hasAudio: boolean;
@@ -169,6 +171,8 @@ export interface Project {
   width: number;
   height: number;
   fps: number;
+  /** True until the user manually changes canvas or frame rate. */
+  autoSettings?: boolean;
   tracks: Track[];
   /** Imported and built-in 3D LUTs referenced by clips. */
   luts?: Record<string, ProjectLut>;

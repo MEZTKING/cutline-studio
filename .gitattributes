@@ -5,3 +5,5 @@
 *.ico binary
 *.wav binary
 *.tflite binary
+*.webm binary
+*.mp4 binary

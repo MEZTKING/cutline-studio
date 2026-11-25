@@ -8,7 +8,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.7.0 — two builds from one engine, with a DaVinci-style colour page, an audio mixer, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.8.0 — two builds from one engine, with source-aware project setup, a fullscreen program monitor, a DaVinci-style colour page, an audio mixer, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -49,7 +49,8 @@ small IPC bridge. The web build remains zero-install and unchanged.
   folder, and relaunches the new build. The previous folder is kept until the swap succeeds.
 - Feed URL is editable in the dialog (default: the GitHub Releases `latest.json`);
   downloads run in the main process, not the renderer.
-- The first updater-equipped build is **0.7.0** — older builds need one manual download.
+- The first updater-equipped build was **0.7.0** — older builds need one manual download.
+- **0.8.0** is the first release that exercises the updater from a public build.
 
 ![App updater](docs/screens/desktop-update.png)
 
@@ -119,8 +120,9 @@ Run this on the Windows machine before trusting it with a project:
 2. **File → Import Media**: a long MP4/MOV; scrub and play; confirm audio.
 3. **File → Save Project**, quit, relaunch: the project should reopen; autosave recovers.
 4. **Export** with **Desktop master with FFmpeg**: H.264, then ProRes; play both files.
-5. Colour page: import a `.cube` LUT, confirm scopes draw and the grade is in the export.
-6. Report the exact error text and Windows version if anything fails.
+5. Import a 24 fps clip: Project settings should auto-match its size/fps; open fullscreen.
+6. Colour page: import a `.cube` LUT, confirm scopes draw and the grade is in the export.
+7. Report the exact error text and Windows version if anything fails.
 
 Desktop-only behaviour:
 - **File → Import Media** streams files from disk; nothing is copied into the app.
@@ -146,12 +148,22 @@ Click the **resolution / fps pills** at the top-left of the viewer (or click emp
 timeline) to deselect a clip and open **Inspector → Project settings**. On desktop you can also
 use **File → Project Settings…** (`Ctrl/Cmd+,`).
 
+**Auto by default.** A new project adopts the canvas and frame rate of the **first video or
+image** imported into an empty timeline. The desktop build reads the exact frame rate from
+FFmpeg; the browser estimates it from frame timestamps. Change the canvas or fps once and the
+project switches to **Custom**; **Match source** re-applies it at any time.
+
 - **Canvas** — 1080p, 4K, 720p, vertical 9:16, square, cinema 2.39:1, or custom width/height.
-- **Frame rate** — 23.976, 24, 25, 30, 50, or 60 fps for timecode, frame stepping, and export defaults.
+- **Frame rate** — 23.976, 24, 25, 29.97, 30, 50, 59.94, or 60 fps.
+- **Match source** in Project settings adopts the first video's size and detected frame rate.
 - These apply to the **whole project** and are undoable. Changing canvas size does not rescale
   existing clips; use **Fill frame** (Transform) or **Auto-reframe** to refit them.
+- **Fullscreen** (expand button or double-click the viewer) renders the preview at your display's
+  resolution — up to 4K — at project fps. It does **not** alter the project or export settings.
 - **Export resolution and fps are separate**: the Export dialog can render 720p/1080p/4K or
   vertical/square at a different frame rate from the project canvas.
+
+![Fullscreen preview](docs/screens/desktop-fullscreen.png)
 
 ### Phone notes
 
@@ -167,7 +179,9 @@ use **File → Project Settings…** (`Ctrl/Cmd+,`).
 ## What it does today
 
 **Editing**
-- Unlimited video/audio tracks, 4K/vertical/square canvas presets, 24–60 fps.
+- Unlimited video/audio tracks, 4K/vertical/square canvas presets, 23.976–60 fps.
+- **Auto project setup** from the first source (exact fps on desktop), with a manual override.
+- **Fullscreen preview** at display resolution, up to 4K, without changing export settings.
 - Drag, trim from either edge, split at the playhead, delete or ripple-delete.
 - Magnetic snapping to clip edges and the playhead; locked tracks; mute/hide.
 - Frame stepping, timeline scrubbing, scrubbing while paused, auto-scroll during playback.
@@ -266,6 +280,7 @@ use **File → Project Settings…** (`Ctrl/Cmd+,`).
 | Step a frame | `←` / `→` (add `Shift` for 1 s) |
 | Start / end | `Home` / `End` |
 | Zoom timeline | `+` / `-`, or `Ctrl/Cmd` + wheel |
+| Fullscreen viewer | double-click the viewer, or the expand button |
 
 ---
 
@@ -321,7 +336,8 @@ Latest runs: **all suites passing** — end-to-end smoke (import → edit → tr
 export → decode → offline reload), on-device caption generation from real speech,
 SRT round-trip, auto-reframe with a moving face, titles and decimal inputs, export
 cancel-and-retry, audio pan/mute/presets through export, fine scrub + thumbnails,
-mobile/landscape layout, and the GPU colour page (LUT application,
+source auto-match at 24 fps, fullscreen display-resolution preview, mobile/landscape layout,
+and the GPU colour page (LUT application,
 channel order, bypass, scopes, burned-in export, persistence, phone sheet). Reports are
 written to `test-results/`.
 
@@ -329,6 +345,8 @@ written to `test-results/`.
 npm test          # SRT + framing math, smoke, features, mobile, captions, auto-reframe
 DISPLAY=:99 npm run test:color   # GPU colour page (needs a display + Mesa/SwiftShader)
 DISPLAY=:99 npm run test:updater # auto-check, dialog, verified download (Electron)
+DISPLAY=:99 npm run test:auto    # 24 fps auto-match, override, fullscreen canvas (headed)
+DISPLAY=:99 npm run test:desktop:fps # exact FFmpeg fps + auto-match in Electron
 ```
 
 The web suites need Playwright Chromium; set `CHROME_PATH` to override the executable.
@@ -362,7 +380,8 @@ it, please open an issue first.
   for performance.
 - Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
   media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
-- Preview is capped at 1280 px internally; export still renders at full target resolution.
+- The **normal** preview is capped at 1280 px for performance; fullscreen uses display resolution (up to 4K). Neither changes export resolution.
+- Browser frame-rate detection is an estimate from frame timestamps; the Windows build asks FFmpeg for the exact source fps.
 - Transitions require the clips to be adjacent on the same track; audio uses source
   handles, so a transition may shorten to the available audio.
 - Long WebM exports decode source audio fully in memory. Very large projects may need

@@ -67,6 +67,7 @@ interface EditorState {
   loadWorkspace: (project: Project, assets: MediaAsset[]) => void;
   renameProject: (name: string) => void;
   setProjectSettings: (patch: Partial<Pick<Project, 'width' | 'height' | 'fps' | 'name'>>) => void;
+  matchProjectToSource: (width: number, height: number, fps?: number) => void;
   resetProject: () => void;
 
   addAssets: (assets: MediaAsset[]) => void;
@@ -187,10 +188,25 @@ export const useEditor = create<EditorState>((set, get) => ({
     }),
   renameProject: (name) => set((s) => ({ project: { ...s.project, name } })),
   setProjectSettings: (patch) =>
-    set((s) => ({
-      project: { ...s.project, ...patch },
-      gestureDirty: s.gestureBase ? true : s.gestureDirty,
-    })),
+    set((s) => {
+      const changesFormat = 'width' in patch || 'height' in patch || 'fps' in patch;
+      return {
+        project: { ...s.project, ...patch, ...(changesFormat ? { autoSettings: false } : {}) },
+        gestureDirty: s.gestureBase ? true : s.gestureDirty,
+      };
+    }),
+  matchProjectToSource: (width, height, fps) =>
+    set((s) => {
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width < 16 || height < 16) return s;
+      const w = Math.max(16, Math.round(width / 2) * 2);
+      const h = Math.max(16, Math.round(height / 2) * 2);
+      const nextFps = fps && Number.isFinite(fps) && fps >= 1 && fps <= 240 ? Math.round(fps * 1000) / 1000 : s.project.fps;
+      return {
+        project: { ...s.project, width: w, height: h, fps: nextFps, autoSettings: true },
+        past: pushHistory(s.past, s.project),
+        future: [],
+      };
+    }),
   resetProject: () =>
     set((s) => ({
       project: createProject(s.project.name === 'Untitled project' ? 'Untitled project' : s.project.name),

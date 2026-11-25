@@ -4,6 +4,7 @@ export interface DesktopMediaEntry {
   path: string;
   url: string;
   name: string;
+  fps?: number;
 }
 
 export interface DesktopAssetRecord {
@@ -11,6 +12,7 @@ export interface DesktopAssetRecord {
   name: string;
   kind: MediaAsset['kind'];
   duration: number;
+  fps?: number;
   width: number;
   height: number;
   hasAudio: boolean;
@@ -158,6 +160,7 @@ export function serializeProjectForDesktop(
       name: asset.name,
       kind: asset.kind,
       duration: asset.duration,
+      fps: asset.fps,
       width: asset.width,
       height: asset.height,
       hasAudio: asset.hasAudio,
@@ -177,8 +180,10 @@ export async function hydrateDesktopProject(
   const paths = records.map((record) => record.path).filter((p): p is string => Boolean(p));
   const registered = paths.length ? await api.registerMedia(paths) : [];
   const urlByPath = new Map(registered.map((entry) => [entry.path, entry.url]));
+  const fpsByPath = new Map(registered.map((entry) => [entry.path, entry.fps]));
   const assets: MediaAsset[] = records.map((record) => ({
     ...record,
+    fps: record.fps ?? (record.path ? fpsByPath.get(record.path) : undefined),
     url: record.path ? urlByPath.get(record.path) ?? mediaUrlForPath(record.path) : '',
   }));
   return { project: data.project, assets };

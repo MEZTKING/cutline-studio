@@ -26,6 +26,7 @@ export function createProject(name = 'Untitled project'): Project {
     width: 1920,
     height: 1080,
     fps: 30,
+    autoSettings: true,
     tracks: [
       { id: uid('trk'), kind: 'video', name: 'V1', muted: false, solo: false, hidden: false, locked: false, clips: [] },
       { id: uid('trk'), kind: 'audio', name: 'A1', muted: false, solo: false, hidden: false, locked: false, clips: [] },

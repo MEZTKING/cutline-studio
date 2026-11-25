@@ -59,6 +59,8 @@ await page.waitForFunction(() => document.querySelectorAll('.clip').length >= 1,
 await page.waitForTimeout(1200);
 check('test footage imported', (await page.locator('.clip').count()) === 1);
 
+const initialCanvas = await page.evaluate(() => ({ w: window.__cutline.getState().project.width, h: window.__cutline.getState().project.height }));
+
 console.log('\n[2] Auto-reframe to 9:16');
 await page.locator('button[title="Auto-reframe for social"]').click();
 await page.waitForSelector('.modal');
@@ -127,7 +129,7 @@ await mobile.close();
 await page.keyboard.press('Control+z');
 await page.waitForTimeout(500);
 const undone = await page.evaluate(() => ({ w: window.__cutline.getState().project.width, h: window.__cutline.getState().project.height, fill: window.__cutline.getState().project.tracks.find((t) => t.kind === 'video')?.clips[0]?.fill }));
-check('undo restores canvas + framing', undone.w === 1920 && undone.h === 1080 && !undone.fill, JSON.stringify(undone));
+check('undo restores canvas + framing', undone.w === initialCanvas.w && undone.h === initialCanvas.h && !undone.fill, JSON.stringify({ ...undone, initialCanvas }));
 check('no runtime errors', errors.length === 0, errors.slice(0, 2).join(' | '));
 fs.writeFileSync(`${OUT}/reframe-report.json`, JSON.stringify({ checks, errors, info }, null, 2));
 await browser.close();

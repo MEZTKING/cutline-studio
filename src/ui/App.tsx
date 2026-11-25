@@ -241,10 +241,23 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const placeImported = (imported: MediaAsset[]) => {
-    const state = useEditor.getState();
+  const placeImported = (imported: MediaAsset[]): string | null => {
+    let state = useEditor.getState();
     const empty = state.project.tracks.every((t) => t.clips.length === 0);
-    if (!empty) return;
+    if (!empty) return null;
+
+    let matched: string | null = null;
+    if (state.project.autoSettings === true) {
+      const source =
+        imported.find((a) => a.kind === 'video' && a.width > 0 && a.height > 0) ??
+        imported.find((a) => a.kind === 'image' && a.width > 0 && a.height > 0);
+      if (source) {
+        state.matchProjectToSource(source.width, source.height, source.fps);
+        state = useEditor.getState();
+        matched = `${state.project.width}×${state.project.height} · ${state.project.fps} fps`;
+      }
+    }
+
     let videoTime = 0;
     let audioTime = 0;
     for (const asset of imported) {
@@ -259,6 +272,7 @@ export function App() {
         videoTime += duration;
       }
     }
+    return matched;
   };
 
   const importFiles = async (files: File[]) => {
@@ -278,15 +292,16 @@ export function App() {
         errors.push(err instanceof Error ? err.message : String(err));
       }
     }
+    let matched: string | null = null;
     if (imported.length) {
       useEditor.getState().addAssets(imported);
-      placeImported(imported);
+      matched = placeImported(imported);
     }
     setBusy((b) => Math.max(0, b - 1));
     if (errors.length) {
       useEditor.getState().notify(errors[0], 'error');
     } else if (imported.length) {
-      useEditor.getState().notify(`Imported ${imported.length} item${imported.length === 1 ? '' : 's'}`, 'success');
+      useEditor.getState().notify(`Imported ${imported.length} item${imported.length === 1 ? '' : 's'}${matched ? ` · project ${matched}` : ''}`, 'success');
     }
   };
 
@@ -305,13 +320,14 @@ export function App() {
         errors.push(err instanceof Error ? err.message : String(err));
       }
     }
+    let matched: string | null = null;
     if (imported.length) {
       useEditor.getState().addAssets(imported);
-      placeImported(imported);
+      matched = placeImported(imported);
     }
     setBusy((b) => Math.max(0, b - 1));
     if (errors.length) useEditor.getState().notify(errors[0], 'error');
-    else if (imported.length) useEditor.getState().notify(`Imported ${imported.length} file${imported.length === 1 ? '' : 's'}`, 'success');
+    else if (imported.length) useEditor.getState().notify(`Imported ${imported.length} file${imported.length === 1 ? '' : 's'}${matched ? ` · project ${matched}` : ''}`, 'success');
   }
 
   async function pickDesktopMedia() {

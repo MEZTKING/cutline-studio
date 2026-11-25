@@ -1,7 +1,7 @@
 {
   "name": "cutline-studio",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "description": "A touch-first professional video editor: browser PWA and an Electron/FFmpeg Windows build with a DaVinci-style colour page, audio mixer, captions, auto-reframe, and an in-app updater.",
   "scripts": {
@@ -35,7 +35,9 @@
     "test:scrub": "node tests/scrub.mjs",
     "test:update-core": "node tests/update-core.test.mjs && node tests/update-helper.mjs",
     "test:updater": "node tests/updater.mjs",
-    "update:manifest": "node scripts/make-update-manifest.mjs"
+    "update:manifest": "node scripts/make-update-manifest.mjs",
+    "test:auto": "node tests/auto-project.mjs",
+    "test:desktop:fps": "node tests/desktop-fps.mjs"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

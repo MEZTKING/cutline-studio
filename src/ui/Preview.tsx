@@ -6,12 +6,25 @@ import { useEditor } from '../state/store';
 import { formatTimecode } from '../core/model';
 import { Icon } from './icons';
 
-function previewSize(project: { width: number; height: number }): { width: number; height: number } {
-  const max = 1280;
-  const factor = Math.min(1, max / Math.max(project.width, project.height));
+function previewSize(project: { width: number; height: number }, fullscreen = false): { width: number; height: number } {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const maxW = fullscreen ? Math.min(3840, Math.max(1280, Math.round(window.innerWidth * dpr))) : 1280;
+  const maxH = fullscreen ? Math.min(2160, Math.max(720, Math.round((window.innerHeight - 64) * dpr))) : 1280;
+  const factor = Math.min(maxW / project.width, maxH / project.height, fullscreen ? 8 : 1);
   const width = Math.max(32, Math.round((project.width * factor) / 2) * 2);
   const height = Math.max(32, Math.round((project.height * factor) / 2) * 2);
   return { width, height };
+}
+
+async function toggleFullscreen(): Promise<void> {
+  const stage = document.querySelector('.stage');
+  if (!(stage instanceof HTMLElement)) return;
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await stage.requestFullscreen();
+  } catch {
+    /* fullscreen unavailable on this platform */
+  }
 }
 
 export function Preview({ onImport }: { onImport: () => void }) {
@@ -19,6 +32,7 @@ export function Preview({ onImport }: { onImport: () => void }) {
   const playing = useEditor((s) => s.playing);
   const hasVideo = project.tracks.some((t) => t.kind === 'video' && t.clips.length > 0);
   const [size, setSize] = useState(() => previewSize(project));
+  const [fullscreen, setFullscreen] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const poolRef = useRef<MediaPool | null>(null);
@@ -28,8 +42,20 @@ export function Preview({ onImport }: { onImport: () => void }) {
   sizeRef.current = size;
 
   useEffect(() => {
-    setSize(previewSize(project));
-  }, [project.width, project.height]);
+    const onChange = () => {
+      const stage = document.querySelector('.stage');
+      setFullscreen(document.fullscreenElement === stage);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  useEffect(() => {
+    const update = () => setSize(previewSize(project, fullscreen));
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [project.width, project.height, fullscreen]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -145,7 +171,10 @@ export function Preview({ onImport }: { onImport: () => void }) {
 
   return (
     <div className="preview-shell">
-      <div className="preview-frame">
+      <div className="preview-frame" onDoubleClick={(e) => {
+        if ((e.target as HTMLElement).closest('button')) return;
+        void toggleFullscreen();
+      }}>
         <canvas ref={canvasRef} width={size.width} height={size.height} aria-label="Program monitor" />
         {!hasVideo && (
           <div className="preview-empty">
@@ -157,6 +186,12 @@ export function Preview({ onImport }: { onImport: () => void }) {
             </button>
           </div>
         )}
+        <button className="fullscreen-exit" title="Exit fullscreen (Esc)" onClick={() => void toggleFullscreen()}>
+          <Icon name="close" size={14} /> Exit
+        </button>
+        <div className="fullscreen-meta">
+          {size.width}×{size.height} · {project.fps} fps preview
+        </div>
         <div className="preview-badge">
           <button
             className="pill accent"

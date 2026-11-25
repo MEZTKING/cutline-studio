@@ -10,6 +10,7 @@ interface StoredAsset {
   name: string;
   kind: MediaAsset['kind'];
   duration: number;
+  fps?: number;
   width: number;
   height: number;
   hasAudio: boolean;
@@ -49,6 +50,7 @@ export async function saveWorkspace(project: Project, assets: MediaAsset[]): Pro
         name: a.name,
         kind: a.kind,
         duration: a.duration,
+        fps: a.fps,
         width: a.width,
         height: a.height,
         hasAudio: a.hasAudio,

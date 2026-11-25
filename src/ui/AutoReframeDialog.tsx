@@ -62,7 +62,7 @@ export function AutoReframeDialog() {
       const result = await autoReframeProject(project, assets, target, setProgress, controller.signal);
       const state = useEditor.getState();
       state.setPlaying(false);
-      state.commitProject(result.project);
+      state.commitProject({ ...result.project, autoSettings: false });
       const faceNote = result.stats.faceTracking
         ? result.stats.faces > 0
           ? `faces found in ${result.stats.faces}/${result.stats.samples} samples`

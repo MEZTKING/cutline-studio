@@ -79,6 +79,59 @@ function allowMedia(filePath) {
   return resolved;
 }
 
+const VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'ogv']);
+
+/** Ask the bundled FFmpeg for the container's exact frame rate. */
+function probeFps(file) {
+  const ffmpeg = ffmpegPath();
+  const ext = path.extname(file).slice(1).toLowerCase();
+  if (!ffmpeg || !VIDEO_EXTENSIONS.has(ext)) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const child = spawn(ffmpeg, ['-hide_banner', '-i', file], { windowsHide: true });
+    let stderr = '';
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      finish(undefined);
+    }, 6000);
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+      if (stderr.length > 16000) stderr = stderr.slice(-16000);
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      finish(undefined);
+    });
+    child.on('close', () => {
+      clearTimeout(timer);
+      const match = /(\d+(?:\.\d+)?)\s+fps\b/.exec(stderr);
+      const value = match ? Number(match[1]) : undefined;
+      finish(Number.isFinite(value) && value > 0 && value <= 240 ? value : undefined);
+    });
+  });
+}
+
+async function describeMedia(files) {
+  const list = (Array.isArray(files) ? files : []).filter((file) => typeof file === 'string' && file.length);
+  const entries = list.map((file) => ({
+    path: path.resolve(file),
+    url: mediaUrlFor(allowMedia(file)),
+    name: path.basename(file),
+  }));
+  await Promise.all(
+    entries.map(async (entry) => {
+      const fps = await probeFps(entry.path);
+      if (fps) entry.fps = fps;
+    }),
+  );
+  return entries;
+}
+
 function settingsFile() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
@@ -493,19 +546,10 @@ function ipcHandlers() {
       filters: MEDIA_FILTERS,
     });
     if (result.canceled) return [];
-    return result.filePaths.map((file) => ({
-      path: file,
-      url: mediaUrlFor(allowMedia(file)),
-      name: path.basename(file),
-    }));
+    return describeMedia(result.filePaths);
   });
 
-  ipcMain.handle('media:register', (_event, files) => {
-    const list = Array.isArray(files) ? files : [];
-    return list
-      .filter((file) => typeof file === 'string' && file.length)
-      .map((file) => ({ path: path.resolve(file), url: mediaUrlFor(allowMedia(file)), name: path.basename(file) }));
-  });
+  ipcMain.handle('media:register', (_event, files) => describeMedia(files));
 
   ipcMain.handle('media:unregister', (_event, file) => {
     if (typeof file === 'string') allowedMedia.delete(path.resolve(file));
