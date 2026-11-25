@@ -45,6 +45,9 @@ const P = {
   captions: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M10 9.6a2.5 2.5 0 100 4.8M17 9.6a2.5 2.5 0 100 4.8" /></>,
   reframe: <><path d="M6 2v16h16" /><path d="M2 6h16v16" /></>,
   save: <><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v6h8V3" /><path d="M8 15h8v6H8z" /></>,
+  palette: <><path d="M12 3a9 9 0 100 18c1.6 0 2.4-1.2 1.6-2.4-.8-1.3 0-2.6 1.4-2.6H18a3 3 0 003-3c0-5-4-10-9-10z" /><circle cx="7.5" cy="11" r="1" fill="currentColor" /><circle cx="10" cy="7" r="1" fill="currentColor" /><circle cx="15" cy="7.5" r="1" fill="currentColor" /></>,
+  dial: <><circle cx="12" cy="12" r="8" /><path d="M12 12l4-4" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></>,
+  sliders: <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="7" cy="18" r="2" /></>,
 };
 
 export type IconName = keyof typeof P;

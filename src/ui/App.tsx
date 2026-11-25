@@ -15,6 +15,7 @@ import { loadWorkspace, saveWorkspace } from '../persistence/db';
 import { useEditor } from '../state/store';
 import { AutoReframeDialog } from './AutoReframeDialog';
 import { CaptionsDialog } from './CaptionsDialog';
+import { ColorWorkspace } from './ColorWorkspace';
 import { ExportDialog } from './ExportDialog';
 import { Icon } from './icons';
 import { Inspector } from './Inspector';
@@ -62,6 +63,8 @@ export function App() {
   const setMobilePanel = useEditor((s) => s.setMobilePanel);
   const assetCount = useEditor((s) => s.assetOrder.length);
   const setExportOpen = useEditor((s) => s.setExportOpen);
+  const workspace = useEditor((s) => s.workspace);
+  const setWorkspace = useEditor((s) => s.setWorkspace);
 
   useEffect(() => {
     let alive = true;
@@ -483,7 +486,7 @@ export function App() {
 
         {!isMobile && (
           <aside className="panel inspector">
-            <Inspector />
+            {workspace === 'color' ? <ColorWorkspace /> : <Inspector />}
           </aside>
         )}
       </div>
@@ -502,10 +505,23 @@ export function App() {
           </button>
           <button
             className={`tab ${mobilePanel === 'inspector' ? 'active' : ''}`}
-            onClick={() => setMobilePanel(mobilePanel === 'inspector' ? null : 'inspector')}
+            onClick={() => {
+              setWorkspace('edit');
+              setMobilePanel(mobilePanel === 'inspector' ? null : 'inspector');
+            }}
           >
             <Icon name="settings" size={18} />
             <span>Edit</span>
+          </button>
+          <button
+            className={`tab ${mobilePanel === 'color' ? 'active' : ''}`}
+            onClick={() => {
+              setWorkspace('color');
+              setMobilePanel(mobilePanel === 'color' ? null : 'color');
+            }}
+          >
+            <Icon name="palette" size={18} />
+            <span>Color</span>
           </button>
           <button
             className="tab"
@@ -521,15 +537,21 @@ export function App() {
       )}
 
       {isMobile && mobilePanel && (
-        <div className="sheet">
+        <div className={`sheet ${mobilePanel === 'color' ? 'color-sheet' : ''}`}>
           <div className="sheet-head">
-            <span>{mobilePanel === 'media' ? 'Media library' : 'Inspector'}</span>
+            <span>{mobilePanel === 'media' ? 'Media library' : mobilePanel === 'color' ? 'Color' : 'Inspector'}</span>
             <button className="btn ghost icon" onClick={() => setMobilePanel(null)} aria-label="Close panel">
               <Icon name="close" size={16} />
             </button>
           </div>
           <div className="sheet-scroll">
-            {mobilePanel === 'media' ? <MediaBin showHead={false} onImport={openPicker} /> : <Inspector showHead={false} />}
+            {mobilePanel === 'media' ? (
+              <MediaBin showHead={false} onImport={openPicker} />
+            ) : mobilePanel === 'color' ? (
+              <ColorWorkspace showHead={false} />
+            ) : (
+              <Inspector showHead={false} />
+            )}
           </div>
         </div>
       )}

@@ -284,7 +284,7 @@ export async function exportProject(
     if (fatal) throw fatal;
     const t = i / fps;
     await prepareFrame(project, assets, t, pool, 'seek');
-    drawFrame(ctx, project, assets, t, width, height, pool);
+    drawFrame(ctx, project, assets, t, width, height, pool, { luts: project.luts });
     const frame = new VideoFrameCtor(canvas, {
       timestamp: Math.round((i * 1_000_000) / fps),
       duration: Math.round(1_000_000 / fps),

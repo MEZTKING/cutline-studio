@@ -33,6 +33,15 @@ export function createProject(name = 'Untitled project'): Project {
   };
 }
 
+export function defaultColor(): import('./types').ColorGrade {
+  return {
+    ...COLOR_DEFAULTS,
+    lift: { ...(COLOR_DEFAULTS.lift ?? { x: 0, y: 0, master: 0 }) },
+    gamma: { ...(COLOR_DEFAULTS.gamma ?? { x: 0, y: 0, master: 0 }) },
+    gain: { ...(COLOR_DEFAULTS.gain ?? { x: 0, y: 0, master: 0 }) },
+  };
+}
+
 export function createClip(asset: MediaAsset, start: number, inPoint = 0, duration?: number): Clip {
   const maxDur = asset.kind === 'image' ? Number.POSITIVE_INFINITY : Math.max(0.1, asset.duration - inPoint);
   const dur = duration ?? Math.min(asset.duration || 10, maxDur);
@@ -48,7 +57,7 @@ export function createClip(asset: MediaAsset, start: number, inPoint = 0, durati
     fadeIn: 0,
     fadeOut: 0,
     transform: { ...TRANSFORM_DEFAULTS },
-    color: { ...COLOR_DEFAULTS },
+    color: defaultColor(),
     transition: null,
     keyframes: {},
   };
@@ -67,7 +76,7 @@ export function createTextClip(start: number, content = 'Your title'): Clip {
     fadeIn: 0,
     fadeOut: 0,
     transform: { ...TRANSFORM_DEFAULTS },
-    color: { ...COLOR_DEFAULTS },
+    color: defaultColor(),
     transition: null,
     keyframes: {},
     fill: false,

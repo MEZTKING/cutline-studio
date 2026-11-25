@@ -1,5 +1,6 @@
 import { clipEnd, clipAt, propValue, sourceTimeAt, transitionAt, type ActiveTransition } from '../core/model';
-import type { Clip, MediaAsset, Project, Track } from '../core/types';
+import type { Clip, MediaAsset, Project, ProjectLut, Track } from '../core/types';
+import { getColorizer, shouldUseGpu } from '../color/colorizer';
 
 export type FrameMode = 'play' | 'seek';
 
@@ -236,6 +237,20 @@ interface DrawOptions {
   alpha?: number;
   offsetX?: number;
   offsetY?: number;
+  luts?: Record<string, ProjectLut>;
+  bypassColor?: boolean;
+}
+
+function drawVignette(ctx: CanvasRenderingContext2D, iw: number, ih: number, strength: number): void {
+  if (strength <= 0.5 || iw <= 0 || ih <= 0) return;
+  const r0 = Math.min(iw, ih) * 0.32;
+  const r1 = Math.max(iw, ih) * 0.78;
+  const g = ctx.createRadialGradient(0, 0, r0, 0, 0, r1);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(0,0,0,${clamp01(strength / 100) * 0.9})`);
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = g;
+  ctx.fillRect(-iw / 2, -ih / 2, iw, ih);
 }
 
 function drawClip(ctx: CanvasRenderingContext2D, clip: Clip, asset: MediaAsset | undefined, at: number, w: number, h: number, pool: MediaPool, opts: DrawOptions = {}): void {
@@ -264,9 +279,7 @@ function drawClip(ctx: CanvasRenderingContext2D, clip: Clip, asset: MediaAsset |
       sh = v.videoHeight;
     } else {
       const still = pool.getVideo(sourceKey(clip));
-      if (still && still.readyState >= 2) {
-        source = still;
-      }
+      if (still && still.readyState >= 2) source = still;
     }
   } else if (asset.kind === 'image') {
     const img = pool.getImage(asset.url);
@@ -274,49 +287,56 @@ function drawClip(ctx: CanvasRenderingContext2D, clip: Clip, asset: MediaAsset |
   }
   if (!source || !sw || !sh) return;
 
-  const scaleFit = clip.fill ? Math.max(w / sw, h / sh) : Math.min(w / sw, h / sh);
   const scale = Math.max(0.01, propValue(clip, 'scale', local));
-  const dw = sw * scaleFit * scale;
-  const dh = sh * scaleFit * scale;
   const x = propValue(clip, 'x', local) * w + (opts.offsetX ?? 0);
   const y = propValue(clip, 'y', local) * h + (opts.offsetY ?? 0);
   const rot = (propValue(clip, 'rotation', local) * Math.PI) / 180;
+  const bypass = Boolean(opts.bypassColor);
+  const fit = clip.fill ? Math.max(w / sw, h / sh) : Math.min(w / sw, h / sh);
+
+  const colorizer = !bypass && shouldUseGpu(clip.color, false) ? getColorizer() : null;
+  const graded = colorizer ? colorizer.colorize(source, sw, sh, w, h, Boolean(clip.fill), clip.color, opts.luts) : null;
 
   ctx.save();
   ctx.translate(w / 2 + x, h / 2 + y);
   if (rot) ctx.rotate(rot);
   ctx.globalAlpha = clamp01(opacity);
-  ctx.filter = colorFilter(clip);
-  try {
-    ctx.drawImage(source, -dw / 2, -dh / 2, dw, dh);
-  } catch {
-    /* tainted or not-ready frame */
-  }
-  ctx.filter = 'none';
 
-  const temp = clip.color.temperature;
-  if (Math.abs(temp) > 0.5) {
-    ctx.globalCompositeOperation = 'soft-light';
-    ctx.globalAlpha = clamp01(Math.abs(temp) / 120);
-    ctx.fillStyle = temp > 0 ? '#ff9a3c' : '#3c9aff';
-    ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = clamp01(opacity);
-  }
+  if (graded) {
+    ctx.filter = clip.color.blur > 0.01 ? `blur(${clip.color.blur}px)` : 'none';
+    try {
+      ctx.drawImage(graded, (-w * scale) / 2, (-h * scale) / 2, w * scale, h * scale);
+    } catch {
+      /* not ready */
+    }
+    ctx.filter = 'none';
+    drawVignette(ctx, sw * fit * scale, sh * fit * scale, clip.color.vignette);
+  } else {
+    const dw = sw * fit * scale;
+    const dh = sh * fit * scale;
+    ctx.filter = bypass ? 'none' : colorFilter(clip);
+    try {
+      ctx.drawImage(source, -dw / 2, -dh / 2, dw, dh);
+    } catch {
+      /* not ready */
+    }
+    ctx.filter = 'none';
 
-  if (clip.color.vignette > 0.5) {
-    const r0 = Math.min(dw, dh) * 0.32;
-    const r1 = Math.max(dw, dh) * 0.78;
-    const g = ctx.createRadialGradient(0, 0, r0, 0, 0, r1);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, `rgba(0,0,0,${clamp01(clip.color.vignette / 100) * 0.9})`);
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = g;
-    ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
+    if (!bypass) {
+      const temp = clip.color.temperature;
+      if (Math.abs(temp) > 0.5) {
+        ctx.globalCompositeOperation = 'soft-light';
+        ctx.globalAlpha = clamp01(Math.abs(temp) / 120);
+        ctx.fillStyle = temp > 0 ? '#ff9a3c' : '#3c9aff';
+        ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = clamp01(opacity);
+      }
+      drawVignette(ctx, dw, dh, clip.color.vignette);
+    }
   }
   ctx.restore();
 }
-
 function hexToRgba(hex: string, alpha: number): string {
   const raw = hex.replace('#', '').trim();
   const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
@@ -415,6 +435,7 @@ function drawTransition(
   w: number,
   h: number,
   pool: MediaPool,
+  opts: DrawOptions = {},
 ): void {
   const { from, to } = tr;
   const p = clamp01(tr.progress);
@@ -423,8 +444,8 @@ function drawTransition(
   if ((!fromAsset && !from.text) || (!toAsset && !to.text)) return;
   const fromAt = Math.min(at, clipEnd(from) - 0.001);
   const toAt = at;
-  const drawA = (alpha = 1, ox = 0, oy = 0) => drawClip(ctx, from, fromAsset, fromAt, w, h, pool, { alpha, offsetX: ox, offsetY: oy });
-  const drawB = (alpha = 1, ox = 0, oy = 0) => drawClip(ctx, to, toAsset, toAt, w, h, pool, { alpha, offsetX: ox, offsetY: oy });
+  const drawA = (alpha = 1, ox = 0, oy = 0) => drawClip(ctx, from, fromAsset, fromAt, w, h, pool, { ...opts, alpha, offsetX: ox, offsetY: oy });
+  const drawB = (alpha = 1, ox = 0, oy = 0) => drawClip(ctx, to, toAsset, toAt, w, h, pool, { ...opts, alpha, offsetX: ox, offsetY: oy });
   void track;
 
   switch (tr.type) {
@@ -492,6 +513,8 @@ export interface RenderOptions {
   /** Draw a subtle safe-area frame + labels (preview only). */
   guides?: boolean;
   background?: string;
+  luts?: Record<string, ProjectLut>;
+  bypassColor?: boolean;
 }
 
 export function drawFrame(
@@ -520,8 +543,8 @@ export function drawFrame(
     const asset = assets[clip.assetId];
     if (!asset && !clip.text) continue;
     const tr = transitionAt(track, clip, t);
-    if (tr) drawTransition(ctx, tr, track, assets, t, w, h, pool);
-    else drawClip(ctx, clip, asset, t, w, h, pool);
+    if (tr) drawTransition(ctx, tr, track, assets, t, w, h, pool, { luts: opts.luts, bypassColor: opts.bypassColor });
+    else drawClip(ctx, clip, asset, t, w, h, pool, { luts: opts.luts, bypassColor: opts.bypassColor });
   }
 
   if (opts.guides) {

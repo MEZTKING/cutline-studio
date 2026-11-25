@@ -42,6 +42,24 @@ export interface Transform {
   opacity: number;
 }
 
+export interface ColorWheel {
+  /** Puck position inside the colour wheel, -1..1 within a unit circle. */
+  x: number;
+  y: number;
+  /** Overall luminance offset, -0.5..0.5. */
+  master: number;
+}
+
+export interface ProjectLut {
+  name: string;
+  /** Cube edge length (17, 33, ...). */
+  size: number;
+  /** RGB floats, 0..1, red changing fastest. */
+  data: number[];
+  domainMin?: [number, number, number];
+  domainMax?: [number, number, number];
+}
+
 export interface ColorGrade {
   brightness: number;
   contrast: number;
@@ -50,6 +68,12 @@ export interface ColorGrade {
   blur: number;
   temperature: number;
   vignette: number;
+  lift?: ColorWheel;
+  gamma?: ColorWheel;
+  gain?: ColorWheel;
+  lutId?: string | null;
+  /** 0..1 blend between the original and the LUT. */
+  lutMix?: number;
 }
 
 export type TransitionType =
@@ -130,6 +154,8 @@ export interface Project {
   height: number;
   fps: number;
   tracks: Track[];
+  /** Imported and built-in 3D LUTs referenced by clips. */
+  luts?: Record<string, ProjectLut>;
 }
 
 export interface CaptionSegment {
@@ -152,6 +178,8 @@ export const TRANSITION_LABEL: Record<TransitionType, string> = {
   iris: 'Iris',
 };
 
+export const ZERO_WHEEL: ColorWheel = { x: 0, y: 0, master: 0 };
+
 export const COLOR_DEFAULTS: ColorGrade = {
   brightness: 0,
   contrast: 0,
@@ -160,6 +188,11 @@ export const COLOR_DEFAULTS: ColorGrade = {
   blur: 0,
   temperature: 0,
   vignette: 0,
+  lift: { ...ZERO_WHEEL },
+  gamma: { ...ZERO_WHEEL },
+  gain: { ...ZERO_WHEEL },
+  lutId: null,
+  lutMix: 1,
 };
 
 export const TRANSFORM_DEFAULTS: Transform = {

@@ -46,13 +46,19 @@ export function Preview({ onImport }: { onImport: () => void }) {
       const { width, height } = sizeRef.current;
       const mine = ++seq;
       if (mode === 'play') {
-        drawFrame(ctx, state.project, state.assets, state.playhead, width, height, pool);
+        drawFrame(ctx, state.project, state.assets, state.playhead, width, height, pool, {
+          luts: state.project.luts,
+          bypassColor: state.colorBypass,
+        });
         void prepareFrame(state.project, state.assets, state.playhead, pool, 'play');
       } else {
         void prepareFrame(state.project, state.assets, state.playhead, pool, 'seek').then(() => {
           if (mine !== seq) return;
           const cur = useEditor.getState();
-          drawFrame(ctx, cur.project, cur.assets, cur.playhead, width, height, pool);
+          drawFrame(ctx, cur.project, cur.assets, cur.playhead, width, height, pool, {
+            luts: cur.project.luts,
+            bypassColor: cur.colorBypass,
+          });
         });
       }
     };
@@ -70,7 +76,13 @@ export function Preview({ onImport }: { onImport: () => void }) {
 
     const unsub = useEditor.subscribe((state, prev) => {
       if (state.project !== prev.project && state.playing) state.setPlaying(false);
-      if (state.project !== prev.project || state.assets !== prev.assets || state.playhead !== prev.playhead || state.playing !== prev.playing) {
+      if (
+        state.project !== prev.project ||
+        state.assets !== prev.assets ||
+        state.playhead !== prev.playhead ||
+        state.playing !== prev.playing ||
+        state.colorBypass !== prev.colorBypass
+      ) {
         schedule();
       }
     });

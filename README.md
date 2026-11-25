@@ -2,7 +2,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.4 — two builds from one engine: a light browser/PWA editor and a heavy Electron desktop app.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.5 — two builds from one engine, now with a DaVinci-style colour page (GPU grading, LUTs, scopes, wheels).** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -21,6 +21,20 @@ A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix
 
 The desktop app is additive: it loads the same UI and editor, then adds native capabilities through a
 small IPC bridge. The web build remains zero-install and unchanged.
+
+## The professional pillars
+
+| Pillar | Today | Next |
+| --- | --- | --- |
+| **Edit** | Multi-track timeline, trim/split/ripple delete, snapping, keyframes, undo | Roll / slip / slide, J/L cuts, multi-select, insert/overwrite, multicam, nested sequences |
+| **Color** | GPU primary grade, lift/gamma/gain wheels, 3D LUTs, live scopes, bypass | Curves, HSL qualifier, power windows, node graph, keyframed grades, HDR |
+| **Audio** | Clip gain, fades, transition crossfades, offline mixdown | EQ, compressor, buses, ducking, 5.1, waveform repair |
+| **Effects** | Ten transitions, auto-reframe, titles, captions | Keying, masks, motion tracking, Fusion-style node effects |
+| **Media** | Disk streaming, `.cutline` projects, autosave | Proxies, bundles/relink, background workers, media library |
+| **Delivery** | WebCodecs + FFmpeg H.264/HEVC/ProRes masters | Render queue, presets, watch folders, background export |
+
+This is the honest shape of "DaVinci + Premiere": each pillar needs real engineering. The app is
+built so pillars can land independently on the same project model and renderer.
 
 ![Cutline Heavy](docs/screens/desktop-heavy.png)
 
@@ -121,6 +135,16 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 - Manual cues, .srt import/export, caption position (bottom/middle/top), restyling,
   and the same keyframe/transform toolkit as titles.
 
+**Color page**
+- **GPU grade** per clip: lift / gamma / gain colour wheels, exposure, contrast,
+  saturation, temperature, hue, vignette, blur — preview and export share the same shader.
+- **3D LUTs**: import `.cube` files, blend with the mix control, and keep them in the project.
+  Built-ins include Monochrome, Teal & Orange, Warm/Cool Film, and Faded Matte.
+- **Live scopes**: RGB waveform, vectorscope, and histogram sampled from the viewer.
+- **Viewer bypass** for before/after, plus a reset and a dedicated Color workspace on desktop
+  and a bottom sheet on phones that keeps the preview visible.
+- Requires WebGL2 for LUTs and wheels; without it the basic sliders fall back to Canvas2D filters.
+
 **Reframing**
 - **Auto-reframe** to 9:16, 4:5, 1:1, or 16:9: detects faces on-device (BlazeFace),
   fills the new canvas, and keyframes the pan so the subject stays in shot.
@@ -145,6 +169,8 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 
 ![Heavy desktop export](docs/screens/desktop-heavy-export.png)
 
+![Colour page](docs/screens/desktop-color.png)
+
 ![Captions](docs/screens/desktop-captions.png)
 
 ![Phone captions](docs/screens/mobile-captions.png)
@@ -152,6 +178,8 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 ![Auto-reframe](docs/screens/desktop-reframe.png)
 
 ![Phone auto-reframe](docs/screens/mobile-reframe.png)
+
+![Colour page on a phone](docs/screens/mobile-color.png)
 
 ![Export](docs/screens/desktop-export.png)
 
@@ -230,7 +258,8 @@ decimal inputs, export cancel-and-retry, and mobile/landscape layout. Reports ar
 to `test-results/`.
 
 ```bash
-npm test   # SRT + framing math, smoke, features, mobile, captions, auto-reframe
+npm test          # SRT + framing math, smoke, features, mobile, captions, auto-reframe
+DISPLAY=:99 npm run test:color   # GPU colour page (needs a display + Mesa/SwiftShader)
 ```
 
 The web suites need Playwright Chromium; set `CHROME_PATH` to override the executable.
@@ -243,14 +272,16 @@ DISPLAY=:99 npm run test:desktop:autosave # crash autosave recovery
 DISPLAY=:99 npm run test:desktop:packaged # packaged app + bundled FFmpeg
 ```
 
-Reports land in `test-results/desktop-*.json`.
+Reports land in `test-results/desktop-*.json`; the colour report is `test-results/color-report.json`.
 
 ---
 
 ## Known limits (read this)
 
-- **Not parity yet.** No GPU pipeline, no LUTs, no masks/tracking, no multicam,
-  no proxy media, no collaboration, no HDR/colour management.
+- **Not parity yet.** No masks/tracking, no multicam, no proxy media, no collaboration,
+  no HDR/colour management, no Fairlight/Fusion equivalents.
+- Colour v1 is a **primary grade per clip**: no curves, HSL qualifiers, power windows,
+  node graphs, or keyframed grades yet. LUT import is 3D `.cube` only.
 - Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
   media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
 - Preview is capped at 1280 px internally; export still renders at full target resolution.
@@ -275,7 +306,11 @@ Reports land in `test-results/desktop-*.json`.
 
 **P0 — trust and speed**
 - Backup/restore project bundles (zip with media), relink, cloud-free sync.
-- GPU compositor (WebGL2/WebGPU) for blend modes, LUTs, masks, and 60 fps 4K preview.
+- Full GPU compositor (WebGL2/WebGPU) for blend modes, masks, and 60 fps 4K preview;
+  primary colour grading + LUTs already run on the GPU.
+- Colour page: curves, HSL qualifier, power windows, node graph, colour-managed pipeline.
+- Professional edit tools: roll/slip/slide, J/L cuts, multi-select, insert/overwrite.
+- Fairlight-lite audio: EQ, compressor, bus, ducking.
 - Proxy generation + background thumbnail/waveform workers.
 - Per-clip crop rectangle, speed curves, freeze frames, reverse.
 - Desktop: native frame pipeline, proxies, render queue, project bundles with relinking.
@@ -287,7 +322,8 @@ Reports land in `test-results/desktop-*.json`.
 - Sticker/emoji overlays, transitions library with presets, social aspect presets.
 
 **P2 — professional depth**
-- Curve-based colour grading, scopes (waveform/vectorscope), LUT import, HDR.
+- Curve-based colour grading, node graphs, qualifiers, HDR colour management.
+- Fusion-style effects: keying, masks, motion tracking.
 - Multicam, nested sequences/adjustment layers, motion tracking and stabilisation.
 - Audio bus, EQ/compressor/denoise, ducking, 5.1.
 - Team projects, review links, comments, version history.
@@ -317,8 +353,8 @@ projects (paths/relinking bundles are the next milestone).
 
 ---
 
-Built with React 19, TypeScript, Vite, zustand, Electron, FFmpeg, `mp4-muxer`, `webm-muxer`,
-transformers.js (Whisper), and MediaPipe (BlazeFace). No analytics, no telemetry, no network
+Built with React 19, TypeScript, Vite, zustand, WebGL2, Electron, FFmpeg, `mp4-muxer`,
+`webm-muxer`, transformers.js (Whisper), and MediaPipe (BlazeFace). No analytics, no telemetry, no network
 calls at runtime beyond the one-time Whisper model download.
 
 ### Third-party assets

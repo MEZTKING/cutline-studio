@@ -195,7 +195,20 @@ export function Inspector({ showHead = true }: { showHead?: boolean }) {
       {showHead && (
         <div className="panel-head">
           <span>Inspector</span>
-          <span className="count">{found ? 'Clip' : 'Project'}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span className="count">{found ? 'Clip' : 'Project'}</span>
+            <button
+              className="btn ghost icon sm"
+              title="Colour page"
+              onClick={() => {
+                const state = useEditor.getState();
+                state.setWorkspace('color');
+                state.setMobilePanel('color');
+              }}
+            >
+              <Icon name="palette" size={13} />
+            </button>
+          </span>
         </div>
       )}
       <div className="panel-scroll">

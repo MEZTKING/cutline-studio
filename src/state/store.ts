@@ -23,16 +23,18 @@ import {
   sortedClips,
   type ActiveTransition,
 } from '../core/model';
-import type { AnimatableProp, CaptionSegment, Clip, MediaAsset, Project, Track, TransitionType } from '../core/types';
+import type { AnimatableProp, CaptionSegment, Clip, MediaAsset, Project, ProjectLut, Track, TransitionType } from '../core/types';
 import { COLOR_DEFAULTS, TRANSFORM_DEFAULTS } from '../core/types';
 
 const HISTORY_LIMIT = 50;
 
-export type MobilePanel = 'media' | 'inspector' | null;
+export type MobilePanel = 'media' | 'inspector' | 'color' | null;
 
 interface EditorState {
   project: Project;
   assets: Record<string, MediaAsset>;
+  workspace: 'edit' | 'color';
+  colorBypass: boolean;
   assetOrder: string[];
   playhead: number;
   playing: boolean;
@@ -49,6 +51,10 @@ interface EditorState {
   exportOpen: boolean;
   captionsOpen: boolean;
   reframeOpen: boolean;
+  setWorkspace: (workspace: 'edit' | 'color') => void;
+  setColorBypass: (bypass: boolean) => void;
+  addLut: (lut: ProjectLut) => string;
+  removeLut: (id: string) => void;
 
   setProject: (p: Project, assets?: Record<string, MediaAsset>) => void;
   loadWorkspace: (project: Project, assets: MediaAsset[]) => void;
@@ -138,6 +144,8 @@ function ensureCaptionTrack(project: Project): { project: Project; trackId: stri
 export const useEditor = create<EditorState>((set, get) => ({
   project: createProject(),
   assets: {},
+  workspace: 'edit',
+  colorBypass: false,
   assetOrder: [],
   playhead: 0,
   playing: false,
@@ -230,6 +238,34 @@ export const useEditor = create<EditorState>((set, get) => ({
   setExportOpen: (open) => set({ exportOpen: open }),
   setCaptionsOpen: (open) => set({ captionsOpen: open }),
   setReframeOpen: (open) => set({ reframeOpen: open }),
+  setWorkspace: (workspace) => set({ workspace }),
+  setColorBypass: (bypass) => set({ colorBypass: bypass }),
+
+  addLut: (lut) => {
+    const id = uid('lut');
+    set((s) => ({
+      project: { ...s.project, luts: { ...(s.project.luts ?? {}), [id]: lut } },
+      past: pushHistory(s.past, s.project),
+      future: [],
+    }));
+    return id;
+  },
+
+  removeLut: (id) =>
+    set((s) => {
+      if (!s.project.luts?.[id]) return s;
+      const luts = { ...s.project.luts };
+      delete luts[id];
+      const tracks = s.project.tracks.map((t) => ({
+        ...t,
+        clips: t.clips.map((c) => (c.color.lutId === id ? { ...c, color: { ...c.color, lutId: null } } : c)),
+      }));
+      return {
+        project: { ...s.project, tracks, luts },
+        past: pushHistory(s.past, s.project),
+        future: [],
+      };
+    }),
 
   commitProject: (project) =>
     set((s) => ({
@@ -573,7 +609,12 @@ export function resetClipVisuals(clip: Clip): Clip {
   return {
     ...clip,
     transform: { ...TRANSFORM_DEFAULTS },
-    color: { ...COLOR_DEFAULTS },
+    color: {
+      ...COLOR_DEFAULTS,
+      lift: { ...(COLOR_DEFAULTS.lift ?? { x: 0, y: 0, master: 0 }) },
+      gamma: { ...(COLOR_DEFAULTS.gamma ?? { x: 0, y: 0, master: 0 }) },
+      gain: { ...(COLOR_DEFAULTS.gain ?? { x: 0, y: 0, master: 0 }) },
+    },
     volume: 1,
     fadeIn: 0,
     fadeOut: 0,
