@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld('cutlineDesktop', {
   queueChooseOutput: (name) => ipcRenderer.invoke('queue:chooseOutput', name),
   queueClear: () => ipcRenderer.invoke('queue:clear'),
   queueRemove: (id) => ipcRenderer.invoke('queue:remove', id),
+  watchList: () => ipcRenderer.invoke('watch:list'),
+  watchAdd: (preset, path) => ipcRenderer.invoke('watch:add', preset, path),
+  watchRemove: (id) => ipcRenderer.invoke('watch:remove', id),
+  watchToggle: (id, enabled) => ipcRenderer.invoke('watch:toggle', id, enabled),
+  watchScan: () => ipcRenderer.invoke('watch:scan'),
   saveProject: (data, options) => ipcRenderer.invoke('project:save', data, options),
   saveProjectTo: (data, file) => ipcRenderer.invoke('project:saveTo', data, file),
   autosave: (data) => ipcRenderer.invoke('project:autosave', data),
@@ -54,6 +59,11 @@ contextBridge.exposeInMainWorld('cutlineDesktop', {
     const handler = (_event, progress) => callback(progress);
     ipcRenderer.on('update:progress', handler);
     return () => ipcRenderer.removeListener('update:progress', handler);
+  },
+  onWatchUpdate: (callback) => {
+    const handler = (_event, folders) => callback(folders);
+    ipcRenderer.on('watch:update', handler);
+    return () => ipcRenderer.removeListener('watch:update', handler);
   },
   onQueueUpdate: (callback) => {
     const handler = (_event, jobs) => callback(jobs);

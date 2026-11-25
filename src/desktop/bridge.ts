@@ -143,6 +143,21 @@ export interface DesktopQueueJob {
   finishedAt: string | null;
 }
 
+export interface DesktopWatchPreset {
+  label: string;
+  width: number;
+  height: number;
+  fps: number;
+  quality: 'fast' | 'balanced' | 'high';
+}
+
+export interface DesktopWatchFolder {
+  id: string;
+  path: string;
+  enabled: boolean;
+  preset: DesktopWatchPreset;
+}
+
 export interface CutlineDesktopApi {
   isDesktop: true;
   platform: string;
@@ -165,6 +180,12 @@ export interface CutlineDesktopApi {
   queueClear(): Promise<DesktopQueueJob[]>;
   queueRemove(id: string): Promise<DesktopQueueJob[]>;
   onQueueUpdate(callback: (jobs: DesktopQueueJob[]) => void): () => void;
+  watchList(): Promise<DesktopWatchFolder[]>;
+  watchAdd(preset: DesktopWatchPreset, path?: string): Promise<DesktopWatchFolder | { error: string } | null>;
+  watchRemove(id: string): Promise<DesktopWatchFolder[]>;
+  watchToggle(id: string, enabled: boolean): Promise<DesktopWatchFolder[]>;
+  watchScan(): Promise<boolean>;
+  onWatchUpdate(callback: (folders: DesktopWatchFolder[]) => void): () => void;
   saveProject(data: DesktopProjectData, options?: { saveAs?: boolean }): Promise<{ path: string } | { error: string } | null>;
   saveProjectTo(data: DesktopProjectData, path: string): Promise<{ path: string } | { error: string }>;
   autosave(data: DesktopProjectData): Promise<{ ok: boolean }>;

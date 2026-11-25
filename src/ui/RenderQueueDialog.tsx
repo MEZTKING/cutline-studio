@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { desktop, isDesktop, serializeProjectForDesktop, type DesktopQueueJob } from '../desktop/bridge';
+import { desktop, isDesktop, serializeProjectForDesktop, type DesktopQueueJob, type DesktopWatchFolder } from '../desktop/bridge';
 import { useEditor } from '../state/store';
 import { Icon } from './icons';
 
@@ -17,12 +17,16 @@ export function RenderQueueDialog() {
   const notify = useEditor((s) => s.notify);
   const [presetId, setPresetId] = useState(PRESETS[0].id);
   const [jobs, setJobs] = useState<DesktopQueueJob[]>([]);
+  const [watches, setWatches] = useState<DesktopWatchFolder[]>([]);
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (!open || !desktop) return;
     void desktop.queueList().then(setJobs);
-    return desktop.onQueueUpdate(setJobs);
+    void desktop.watchList().then(setWatches);
+    const a = desktop.onQueueUpdate(setJobs);
+    const b = desktop.onWatchUpdate(setWatches);
+    return () => { a(); b(); };
   }, [open]);
 
   if (!open) return null;
@@ -59,6 +63,23 @@ export function RenderQueueDialog() {
       notify(err instanceof Error ? err.message : String(err), 'error');
     } finally {
       setAdding(false);
+    }
+  };
+
+  const addWatch = async () => {
+    if (!desktop) return;
+    const result = await desktop.watchAdd({
+      label: preset.label,
+      width: preset.width,
+      height: preset.height,
+      fps: preset.fps,
+      quality: preset.quality,
+    });
+    if (!result) return;
+    if ('error' in result) notify(result.error, 'error');
+    else {
+      setWatches((prev) => [...prev.filter((w) => w.id !== result.id), result]);
+      notify('Watch folder added — new and edited projects will render automatically', 'success');
     }
   };
 
@@ -135,6 +156,40 @@ export function RenderQueueDialog() {
                   ))}
                 </div>
               )}
+              <div className="watch-section">
+                <div className="watch-head">
+                  <div>
+                    <strong>Watch folders</strong>
+                    <span>Auto-render new / edited .cutline projects</span>
+                  </div>
+                  <button className="btn sm" onClick={() => void addWatch()}>
+                    <Icon name="plus" size={12} /> Add watch folder
+                  </button>
+                </div>
+                {watches.length === 0 ? (
+                  <div className="hint">Pick a folder. Existing projects are baselined; new ones render to <code>renders/</code> using the preset above.</div>
+                ) : (
+                  <div className="watch-list">
+                    {watches.map((watch) => (
+                      <div className="watch-row" key={watch.id}>
+                        <label className="watch-toggle">
+                          <input type="checkbox" checked={watch.enabled} onChange={(e) => void desktop?.watchToggle(watch.id, e.target.checked).then(setWatches)} />
+                        </label>
+                        <div className="watch-info">
+                          <div className="watch-path" title={watch.path}>{watch.path}</div>
+                          <div className="watch-preset">{watch.preset.label} · {watch.preset.width}×{watch.preset.height} · {watch.preset.fps} fps</div>
+                        </div>
+                        <button className="btn ghost icon sm" title="Scan now" onClick={() => void desktop?.watchScan()}>
+                          <Icon name="loop" size={13} />
+                        </button>
+                        <button className="btn ghost icon sm" title="Remove watch" onClick={() => void desktop?.watchRemove(watch.id).then(setWatches)}>
+                          <Icon name="close" size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

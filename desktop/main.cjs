@@ -86,6 +86,9 @@ let automationIpcReady = false;
 let automationSettled = null;
 const renderQueue = [];
 let renderQueueBusy = false;
+let watchFolders = [];
+let watchTimer = null;
+let watchProcessed = new Set();
 
 function mediaUrlFor(filePath) {
   return `cutline-media://file/${Buffer.from(path.resolve(filePath), 'utf8').toString('base64url')}`;
@@ -456,6 +459,154 @@ async function pumpRenderQueue() {
     emitQueue();
     void pumpRenderQueue();
   }
+}
+
+function watchProcessedFile() {
+  return path.join(app.getPath('userData'), 'watch-processed.json');
+}
+
+function watchKey(watch, file, stat) {
+  return `${watch.id}:${path.resolve(file)}:${Math.round(stat.mtimeMs)}:${stat.size}`;
+}
+
+function saveWatchState() {
+  void saveSettings({ watchFolders: watchFolders.map(({ id, path: dir, enabled, preset }) => ({ id, path: dir, enabled, preset })) });
+  try {
+    fs.writeFileSync(watchProcessedFile(), JSON.stringify([...watchProcessed].slice(-4000)));
+  } catch {
+    /* best effort */
+  }
+}
+
+function emitWatches() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('watch:update', watchFolders.map(({ id, path: dir, enabled, preset }) => ({ id, path: dir, enabled, preset })));
+  }
+}
+
+async function scanWatch(watch, baseline = false) {
+  let entries;
+  try {
+    entries = await fsp.readdir(watch.path, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = path.join(watch.path, entry.name);
+    let file = full;
+    if (entry.isDirectory() && entry.name.toLowerCase().endsWith('.cutlinebundle')) {
+      if (!isBundleRoot(full)) continue;
+      file = path.join(full, 'project.cutline');
+    } else if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.cutline')) {
+      continue;
+    }
+    let stat;
+    try {
+      stat = await fsp.stat(file);
+    } catch {
+      continue;
+    }
+    if (Date.now() - stat.mtimeMs < 2500) continue;
+    const key = watchKey(watch, file, stat);
+    if (watchProcessed.has(key)) continue;
+    if (baseline) {
+      watchProcessed.add(key);
+      continue;
+    }
+    try {
+      const data = entry.isDirectory() ? readBundle(full).data : readJsonSync(file);
+      if (!data || data.format !== 'cutline-project' || !data.project) continue;
+      const outputDir = path.join(watch.path, 'renders');
+      await fsp.mkdir(outputDir, { recursive: true });
+      const safe = String(data.project.name || path.basename(full, path.extname(full))).replace(/[\\/:*?"<>|]+/g, '-');
+      const outputPath = path.join(outputDir, `${safe}.webm`);
+      enqueueRenderJob({
+        data,
+        outputPath,
+        width: watch.preset.width,
+        height: watch.preset.height,
+        fps: watch.preset.fps,
+        quality: watch.preset.quality,
+        format: 'webm',
+        includeAudio: true,
+      });
+      watchProcessed.add(key);
+      saveWatchState();
+    } catch (err) {
+      console.warn('[watch]', err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+async function scanWatches(baseline = false) {
+  for (const watch of watchFolders) {
+    if (watch.enabled) await scanWatch(watch, baseline);
+  }
+}
+
+function startWatchTimer() {
+  if (watchTimer) clearInterval(watchTimer);
+  watchTimer = setInterval(() => void scanWatches(false), 4000);
+  if (watchTimer.unref) watchTimer.unref();
+}
+
+async function initWatchFolders() {
+  const settings = loadSettings();
+  watchFolders = Array.isArray(settings.watchFolders)
+    ? settings.watchFolders.filter((w) => w && typeof w.path === 'string').map((w) => ({
+        id: w.id || crypto.randomUUID(),
+        path: path.resolve(w.path),
+        enabled: w.enabled !== false,
+        preset: w.preset || { label: 'YouTube · 1080p', width: 1920, height: 1080, fps: 30, quality: 'high' },
+      }))
+    : [];
+  try {
+    const saved = JSON.parse(fs.readFileSync(watchProcessedFile(), 'utf8'));
+    if (Array.isArray(saved)) watchProcessed = new Set(saved);
+  } catch {
+    watchProcessed = new Set();
+  }
+  startWatchTimer();
+  emitWatches();
+  void scanWatches(false);
+}
+
+async function addWatchFolder(explicitPath, preset) {
+  let dir = explicitPath ? path.resolve(explicitPath) : null;
+  if (!dir) {
+    const result = await dialog.showOpenDialog(mainWindow, { title: 'Watch folder for .cutline projects', properties: ['openDirectory'] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    dir = path.resolve(result.filePaths[0]);
+  }
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error('Watch path must be a folder.');
+  if (watchFolders.some((w) => w.path.toLowerCase() === dir.toLowerCase())) throw new Error('That folder is already watched.');
+  const watch = {
+    id: crypto.randomUUID(),
+    path: dir,
+    enabled: true,
+    preset: preset || { label: 'YouTube · 1080p', width: 1920, height: 1080, fps: 30, quality: 'high' },
+  };
+  watchFolders.push(watch);
+  await scanWatch(watch, true);
+  saveWatchState();
+  emitWatches();
+  startWatchTimer();
+  return watch;
+}
+
+async function removeWatchFolder(id) {
+  watchFolders = watchFolders.filter((w) => w.id !== id);
+  saveWatchState();
+  emitWatches();
+}
+
+async function toggleWatchFolder(id, enabled) {
+  const watch = watchFolders.find((w) => w.id === id);
+  if (!watch) return;
+  watch.enabled = enabled !== false;
+  saveWatchState();
+  emitWatches();
+  if (watch.enabled) void scanWatch(watch, false);
 }
 
 async function chooseQueueOutput(name) {
@@ -1117,6 +1268,28 @@ function ipcHandlers() {
     emitQueue();
     return renderQueue.map(publicQueueJob);
   });
+  ipcMain.handle('watch:list', () => watchFolders.map(({ id, path: dir, enabled, preset }) => ({ id, path: dir, enabled, preset })));
+  ipcMain.handle('watch:add', async (_event, preset, explicitPath) => {
+    try {
+      const watch = await addWatchFolder(explicitPath, preset);
+      return watch ? { id: watch.id, path: watch.path, enabled: watch.enabled, preset: watch.preset } : null;
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle('watch:remove', async (_event, id) => {
+    await removeWatchFolder(id);
+    return watchFolders.map(({ id: wid, path: dir, enabled, preset }) => ({ id: wid, path: dir, enabled, preset }));
+  });
+  ipcMain.handle('watch:toggle', async (_event, id, enabled) => {
+    await toggleWatchFolder(id, enabled);
+    return watchFolders.map(({ id: wid, path: dir, enabled: en, preset }) => ({ id: wid, path: dir, enabled: en, preset }));
+  });
+  ipcMain.handle('watch:scan', async () => {
+    await scanWatches(false);
+    return true;
+  });
+
   ipcMain.handle('queue:remove', (_event, id) => {
     const idx = renderQueue.findIndex((j) => j.id === id && j.status === 'queued');
     if (idx >= 0) renderQueue.splice(idx, 1);
@@ -1285,6 +1458,7 @@ if (!gotLock) {
     ipcHandlers();
     buildMenu();
     createWindow();
+    void initWatchFolders();
     if (app.isPackaged || UPDATE_DEV) setTimeout(() => void autoUpdateCheck(), 8000);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

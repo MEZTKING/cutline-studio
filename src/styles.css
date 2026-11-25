@@ -2764,3 +2764,70 @@ input[type="color"] {
   gap: 4px;
   align-items: center;
 }
+
+.queue-body {
+  max-height: 68vh;
+  overflow: auto;
+}
+
+.watch-section {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 2px;
+}
+
+.watch-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.watch-head strong {
+  display: block;
+  font-size: 12px;
+}
+
+.watch-head span {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.watch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.watch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.watch-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.watch-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-2);
+}
+
+.watch-preset {
+  margin-top: 2px;
+  font-size: 9px;
+  color: var(--text-3);
+}
