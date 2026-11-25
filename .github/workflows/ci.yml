@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build web app
+        run: npm run build
+      - name: Unit checks
+        run: |
+          node tests/srt.test.mjs
+          node tests/reframe.test.mjs
+          node tests/update-core.test.mjs
+          node tests/update-helper.mjs

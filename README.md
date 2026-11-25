@@ -1,5 +1,11 @@
 # Cutline Studio
 
+[![CI](https://github.com/MEZTKING/cutline-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/MEZTKING/cutline-studio/actions/workflows/ci.yml)
+[![Windows build](https://github.com/MEZTKING/cutline-studio/actions/workflows/windows-build.yml/badge.svg)](https://github.com/MEZTKING/cutline-studio/actions/workflows/windows-build.yml)
+[![Latest release](https://img.shields.io/github/v/release/MEZTKING/cutline-studio?label=download&color=5cf2b0)](https://github.com/MEZTKING/cutline-studio/releases/latest)
+
+**Windows downloads:** [Releases](https://github.com/MEZTKING/cutline-studio/releases/latest) — portable ZIP and NSIS installer.
+
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
 **Status: v0.7.0 — two builds from one engine, with a DaVinci-style colour page, an audio mixer, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
@@ -41,7 +47,7 @@ small IPC bridge. The web build remains zero-install and unchanged.
 - Verifies the download against the **SHA-256** in the update feed before installing.
 - **Restart & install**: the helper waits for the app to close, replaces the portable app
   folder, and relaunches the new build. The previous folder is kept until the swap succeeds.
-- Feed URL is editable in the dialog (default in `desktop/update-config.json`);
+- Feed URL is editable in the dialog (default: the GitHub Releases `latest.json`);
   downloads run in the main process, not the renderer.
 - The first updater-equipped build is **0.7.0** — older builds need one manual download.
 

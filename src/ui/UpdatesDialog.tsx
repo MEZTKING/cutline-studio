@@ -251,7 +251,7 @@ export function UpdatesDialog() {
             </div>
             <div className="hint">
               Downloads are verified against the SHA-256 in the feed. Use HTTPS for public feeds; HTTP is only
-              appropriate on a private Tailscale/LAN.
+              appropriate on a private LAN.
             </div>
           </details>
         </div>

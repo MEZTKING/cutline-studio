@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.7.0",
   "type": "module",
-  "description": "Cutline Studio — a fast, touch-first timeline editor that runs in the browser.",
+  "description": "A touch-first professional video editor: browser PWA and an Electron/FFmpeg Windows build with a DaVinci-style colour page, audio mixer, captions, auto-reframe, and an in-app updater.",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc --noEmit && vite build",
@@ -120,5 +120,13 @@
       "category": "public.app-category.video"
     }
   },
-  "author": "Cutline Studio"
+  "author": "MEZTKING",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MEZTKING/cutline-studio.git"
+  },
+  "homepage": "https://github.com/MEZTKING/cutline-studio",
+  "bugs": {
+    "url": "https://github.com/MEZTKING/cutline-studio/issues"
+  }
 }

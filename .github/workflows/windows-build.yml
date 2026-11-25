@@ -1,10 +1,13 @@
-name: Windows installer
+name: Windows build & release
 
 on:
   workflow_dispatch:
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -19,15 +22,45 @@ jobs:
         run: npm ci
       - name: Build web bundle
         run: npm run build
-      - name: Build Windows installer
+      - name: Build Windows app (installer + unpacked)
         run: npx electron-builder --win --x64 --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Upload installer
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $zip = "release/Cutline-Studio-$version-windows-x64-portable.zip"
+          Compress-Archive -Path "release/win-unpacked/*" -DestinationPath $zip -CompressionLevel Optimal
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          "PORTABLE_ZIP=$zip" >> $env:GITHUB_ENV
+      - name: Generate update manifest
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notlike "v*") { $tag = "v$env:APP_VERSION" }
+          $url = "https://github.com/${{ github.repository }}/releases/download/$tag/Cutline-Studio-$env:APP_VERSION-windows-x64-portable.zip"
+          node scripts/make-update-manifest.mjs --zip "$env:PORTABLE_ZIP" --url "$url" --version "$env:APP_VERSION" --notes "Cutline Studio $env:APP_VERSION. See the GitHub release notes." --out release/updates/latest.json
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cutline-studio-windows
+          name: cutline-studio-${{ github.ref_name }}
           path: |
             release/*.exe
             release/*.blockmap
+            release/Cutline-Studio-*-windows-x64-portable.zip
+            release/updates/latest.json
           if-no-files-found: error
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Cutline Studio ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/*.blockmap
+            release/Cutline-Studio-*-windows-x64-portable.zip
+            release/updates/latest.json
