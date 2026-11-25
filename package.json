@@ -27,7 +27,9 @@
     "test:desktop:autosave": "node tests/desktop-autosave.mjs",
     "test:desktop:packaged": "node tests/desktop-packaged.mjs",
     "desktop:dev": "electron .",
-    "test:color": "node tests/color.mjs"
+    "test:color": "node tests/color.mjs",
+    "desktop:pack:win": "npm run build && electron-builder --win --dir",
+    "serve:release": "node scripts/serve-release.mjs"
   },
   "dependencies": {
     "ffmpeg-static": "^5.3.0"

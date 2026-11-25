@@ -77,9 +77,30 @@ npm run desktop:dist:win     # Windows NSIS installer (run on Windows)
 npm run desktop:dist:linux   # Linux AppImage (run on Linux)
 ```
 
-On Windows, the GitHub Actions workflow in `.github/workflows/windows-build.yml` builds the
-installer and uploads it as an artifact. The installer is unsigned, so SmartScreen will warn
-unless you sign it.
+On Windows, build a **portable folder** or an installer:
+
+```powershell
+npm ci
+npm run build
+npm run desktop:pack:win    # release/win-unpacked/Cutline Studio.exe (portable)
+npm run desktop:dist:win    # release/Cutline-Studio-<version>-Setup.exe (installer)
+```
+
+The GitHub Actions workflow in `.github/workflows/windows-build.yml` also produces an
+installer artifact from `windows-latest`. Builds are **unsigned**, so SmartScreen warns
+(“More info” → “Run anyway”). The portable folder is ~560 MB extracted (Electron 45 +
+FFmpeg); the zip is smaller.
+
+### Windows smoke checklist
+
+Run this on the Windows machine before trusting it with a project:
+
+1. Extract the whole portable zip and launch `Cutline Studio.exe`.
+2. **File → Import Media**: a long MP4/MOV; scrub and play; confirm audio.
+3. **File → Save Project**, quit, relaunch: the project should reopen; autosave recovers.
+4. **Export** with **Desktop master with FFmpeg**: H.264, then ProRes; play both files.
+5. Colour page: import a `.cube` LUT, confirm scopes draw and the grade is in the export.
+6. Report the exact error text and Windows version if anything fails.
 
 Desktop-only behaviour:
 - **File → Import Media** streams files from disk; nothing is copied into the app.
