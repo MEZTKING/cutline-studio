@@ -5,5 +5,10 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   server: { host: '0.0.0.0', port: 5173 },
-  build: { target: 'es2022' },
+  build: {
+    target: 'es2022',
+    rollupOptions: {
+      input: { main: 'index.html', automation: 'automation.html' },
+    },
+  },
 });

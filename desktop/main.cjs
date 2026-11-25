@@ -22,6 +22,8 @@ const { createReadStream } = require('node:fs');
 const { Readable } = require('node:stream');
 const { pathToFileURL } = require('node:url');
 const { spawn } = require('node:child_process');
+const crypto = require('node:crypto');
+const { parseCli, startApiServer, newToken, HELP } = require('./cli.cjs');
 const { Updater } = require('./updater.cjs');
 
 app.setName('Cutline Studio');
@@ -35,6 +37,15 @@ if (process.env.CUTLINE_SOFTWARE === '1') {
 const DIST = path.join(__dirname, '..', 'dist');
 const DEV_URL = process.env.CUTLINE_DEV_URL || null;
 const IS_TEST = process.env.CUTLINE_TEST === '1';
+const cliArgs = process.argv.slice(app.isPackaged ? 1 : 2);
+let CLI = { mode: null, help: false, version: false, json: false, project: null, out: null, width: null, height: null, fps: null, quality: 'balanced', format: null, includeAudio: true, port: 4317, token: null };
+let CLI_ERROR = null;
+try {
+  CLI = parseCli(cliArgs);
+} catch (err) {
+  CLI_ERROR = err instanceof Error ? err.message : String(err);
+}
+const CLI_MODE = Boolean(CLI_ERROR || CLI.mode || CLI.help || CLI.version);
 const UPDATE_DEV = process.env.CUTLINE_UPDATE_ALLOW_DEV === '1';
 const updater = new Updater();
 let lastUpdateInfo = null;
@@ -67,6 +78,10 @@ const allowedMedia = new Set();
 let mainWindow = null;
 let currentProjectPath = null;
 let exporting = false;
+let activeAutomation = null;
+let automationWindow = null;
+let automationIpcReady = false;
+let automationSettled = null;
 
 function mediaUrlFor(filePath) {
   return `cutline-media://file/${Buffer.from(path.resolve(filePath), 'utf8').toString('base64url')}`;
@@ -305,6 +320,262 @@ function registerProtocols() {
       return new Response('Media not found', { status: 404 });
     }
   });
+}
+
+function publicJob(job) {
+  return {
+    id: job.id,
+    status: job.status,
+    progress: job.progress ?? 0,
+    phase: job.phase ?? 'Queued',
+    projectPath: job.projectPath,
+    outputPath: job.outputPath,
+    bytes: job.bytes ?? null,
+    error: job.error ?? null,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt ?? null,
+    finishedAt: job.finishedAt ?? null,
+    settings: job.settings,
+  };
+}
+
+function prepareAutomationJob(input) {
+  const projectPath = path.resolve(String(input.projectPath || input.project || ''));
+  const outputPath = path.resolve(String(input.outputPath || input.out || ''));
+  if (!input.projectPath && !input.project) throw new Error('projectPath is required.');
+  if (!input.outputPath && !input.out) throw new Error('outputPath is required.');
+  if (!fs.existsSync(projectPath)) throw new Error(`Project not found: ${projectPath}`);
+  const data = readJsonSync(projectPath);
+  if (!data || data.format !== 'cutline-project' || !data.project) throw new Error('Not a Cutline project file.');
+  for (const asset of data.assets || []) if (asset?.path) allowMedia(asset.path);
+  const ext = path.extname(outputPath).toLowerCase();
+  let format = input.format;
+  if (!format || format === 'auto') format = ext === '.mp4' ? 'mp4' : ext === '.webm' ? 'webm' : 'auto';
+  if (!['auto', 'mp4', 'webm'].includes(format)) throw new Error('format must be auto, mp4, or webm.');
+  const width = Math.min(7680, Math.max(16, Math.round(Number(input.width) || data.project.width || 1920)));
+  const height = Math.min(7680, Math.max(16, Math.round(Number(input.height) || data.project.height || 1080)));
+  const fps = Math.min(60, Math.max(12, Math.round(Number(input.fps) || data.project.fps || 30)));
+  const quality = ['fast', 'balanced', 'high'].includes(input.quality) ? input.quality : 'balanced';
+  return {
+    id: crypto.randomUUID(),
+    status: 'queued',
+    progress: 0,
+    phase: 'Queued',
+    createdAt: new Date().toISOString(),
+    projectPath,
+    outputPath,
+    data,
+    settings: {
+      width: Math.round(width / 2) * 2,
+      height: Math.round(height / 2) * 2,
+      fps,
+      quality,
+      format,
+      includeAudio: input.includeAudio !== false,
+      fileName: data.project.name || 'render',
+    },
+  };
+}
+
+function ensureAutomationIpc() {
+  if (automationIpcReady) return;
+  automationIpcReady = true;
+  ipcMain.handle('automation:job', () => {
+    if (!activeAutomation) throw new Error('No automation job is active.');
+    return { data: activeAutomation.data, settings: activeAutomation.settings, outputPath: activeAutomation.outputPath };
+  });
+  ipcMain.on('automation:progress', (_event, progress) => {
+    if (!activeAutomation) return;
+    const percent = Math.max(0, Math.min(100, Number(progress?.percent) || 0));
+    activeAutomation.progress = percent;
+    activeAutomation.phase = String(progress?.phase || 'Rendering');
+    activeAutomation.onProgress?.(activeAutomation);
+  });
+  ipcMain.handle('automation:write', async (_event, buffer) => {
+    if (!activeAutomation) throw new Error('No automation job is active.');
+    const bytes = Buffer.isBuffer(buffer)
+      ? buffer
+      : buffer instanceof ArrayBuffer
+        ? Buffer.from(buffer)
+        : ArrayBuffer.isView(buffer)
+          ? Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+          : Buffer.from(buffer);
+    await fsp.mkdir(path.dirname(activeAutomation.outputPath), { recursive: true });
+    await fsp.writeFile(activeAutomation.outputPath, bytes);
+    activeAutomation.bytes = bytes.length;
+    return { ok: true };
+  });
+  ipcMain.on('automation:done', () => {
+    activeAutomation?.resolve?.();
+  });
+  ipcMain.on('automation:error', (_event, message) => {
+    activeAutomation?.reject?.(new Error(String(message || 'Automation render failed.')));
+  });
+}
+
+async function runAutomationWorker(job, onProgress) {
+  ensureAutomationIpc();
+  activeAutomation = job;
+  job.onProgress = onProgress;
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    show: false,
+    backgroundColor: '#000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      backgroundThrottling: false,
+      spellcheck: false,
+    },
+  });
+  automationWindow = win;
+  win.setMenu(null);
+  let finished = false;
+  const timeout = setTimeout(() => {
+    activeAutomation?.reject?.(new Error('Render timed out after 30 minutes.'));
+  }, 30 * 60 * 1000);
+  try {
+    await new Promise((resolve, reject) => {
+      const cleanup = () => {
+        activeAutomation = null;
+        clearTimeout(timeout);
+        if (!win.isDestroyed()) win.destroy();
+        if (automationWindow === win) automationWindow = null;
+      };
+      win.webContents.on('render-process-gone', (_e, details) => {
+        cleanup();
+        reject(new Error(`Render process exited: ${details.reason}`));
+      });
+      win.webContents.on('did-fail-load', (_e, code, description) => {
+        cleanup();
+        reject(new Error(`Could not load render worker: ${description} (${code})`));
+      });
+      activeAutomation = job;
+      job.resolve = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        resolve();
+      };
+      job.reject = (err) => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        reject(err);
+      };
+      const url = DEV_URL ? new URL('automation.html', DEV_URL).toString() : 'cutline://app/automation.html';
+      win.loadURL(url).catch((err) => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        reject(err);
+      });
+    });
+  } finally {
+    clearTimeout(timeout);
+    if (automationWindow && !automationWindow.isDestroyed()) automationWindow.destroy();
+    automationWindow = null;
+    activeAutomation = null;
+  }
+  return job;
+}
+
+function writeCliProgress(job) {
+  if (CLI.json) {
+    console.log(JSON.stringify({ event: 'progress', id: job.id, percent: Math.round(job.progress ?? 0), phase: job.phase ?? '' }));
+  } else {
+    process.stdout.write(`\r[${String(Math.round(job.progress ?? 0)).padStart(3)}%] ${job.phase ?? ''}\x1b[K`);
+  }
+}
+
+async function runCliMode() {
+  if (CLI_ERROR) {
+    console.error(`cutline: ${CLI_ERROR}\n\n${HELP}`);
+    app.exit(2);
+    return;
+  }
+  if (CLI.help) {
+    console.log(HELP);
+    app.exit(0);
+    return;
+  }
+  if (CLI.version) {
+    console.log(app.getVersion());
+    app.exit(0);
+    return;
+  }
+  registerProtocols();
+  ipcHandlers();
+  ensureAutomationIpc();
+  if (CLI.mode === 'render') {
+    try {
+      const job = prepareAutomationJob({ projectPath: CLI.project, outputPath: CLI.out, width: CLI.width, height: CLI.height, fps: CLI.fps, quality: CLI.quality, format: CLI.format, includeAudio: CLI.includeAudio });
+      await runAutomationWorker(job, writeCliProgress);
+      if (!CLI.json) process.stdout.write('\n');
+      console.log(CLI.json ? JSON.stringify({ event: 'done', id: job.id, output: job.outputPath, bytes: job.bytes }) : `Rendered ${job.outputPath} (${(job.bytes / 1e6).toFixed(1)} MB)`);
+      app.exit(0);
+    } catch (err) {
+      if (!CLI.json) process.stdout.write('\n');
+      console.error(`cutline: ${err instanceof Error ? err.message : String(err)}`);
+      app.exit(1);
+    }
+    return;
+  }
+  if (CLI.mode === 'serve') {
+    const jobs = new Map();
+    const queue = [];
+    let busy = false;
+    const pump = async () => {
+      if (busy) return;
+      const job = queue.shift();
+      if (!job) return;
+      busy = true;
+      job.status = 'running';
+      job.startedAt = new Date().toISOString();
+      try {
+        await runAutomationWorker(job, (p) => {
+          job.progress = p.percent;
+          job.phase = p.phase;
+        });
+        job.status = 'done';
+        job.progress = 100;
+        job.phase = 'Done';
+      } catch (err) {
+        job.status = 'error';
+        job.error = err instanceof Error ? err.message : String(err);
+        job.phase = 'Error';
+      } finally {
+        job.finishedAt = new Date().toISOString();
+        busy = false;
+        void pump();
+      }
+    };
+    const submitRender = (body) => {
+      const job = prepareAutomationJob(body || {});
+      jobs.set(job.id, job);
+      queue.push(job);
+      void pump();
+      return publicJob(job);
+    };
+    const apiJobs = {
+      list: () => [...jobs.values()].map(publicJob),
+      get: (id) => {
+        const job = jobs.get(id);
+        return job ? publicJob(job) : null;
+      },
+    };
+    const token = CLI.token || process.env.CUTLINE_API_TOKEN || newToken();
+    if (!CLI.token && !process.env.CUTLINE_API_TOKEN) {
+      await fsp.writeFile(path.join(app.getPath('userData'), 'api-token'), token, 'utf8').catch(() => undefined);
+    }
+    const { port } = await startApiServer({ port: CLI.port, token, jobs: apiJobs, submitRender, version: app.getVersion() });
+    console.log(JSON.stringify({ event: 'serving', url: `http://127.0.0.1:${port}`, token, version: app.getVersion() }));
+    process.on('SIGINT', () => app.exit(0));
+    process.on('SIGTERM', () => app.exit(0));
+  }
 }
 
 function sendMenu(command) {
@@ -732,9 +1003,17 @@ function runProcess(command, args, onData) {
   });
 }
 
-const gotLock = app.requestSingleInstanceLock();
+const gotLock = CLI_MODE ? true : app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
+} else if (CLI_MODE) {
+  app.on('window-all-closed', () => {
+    /* keep the local API process alive after the hidden render worker closes */
+  });
+  app.whenReady().then(() => runCliMode()).catch((err) => {
+    console.error(err);
+    app.exit(1);
+  });
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {

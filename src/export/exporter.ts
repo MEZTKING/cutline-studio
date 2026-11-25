@@ -131,7 +131,7 @@ function projectHasAudio(project: Project, assets: Record<string, MediaAsset>): 
     if (track.muted) continue;
     for (const clip of track.clips) {
       const a = assets[clip.assetId];
-      if (a && (a.kind === 'audio' || (a.kind === 'video' && a.audioBuffer))) return true;
+      if (a && (a.kind === 'audio' || a.hasAudio || a.audioBuffer)) return true;
     }
   }
   return false;

@@ -1,7 +1,7 @@
 {
   "name": "cutline-studio",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "description": "A touch-first professional video editor: browser PWA and an Electron/FFmpeg Windows build with a DaVinci-style colour page, audio mixer, captions, auto-reframe, and an in-app updater.",
   "scripts": {
@@ -38,7 +38,9 @@
     "update:manifest": "node scripts/make-update-manifest.mjs",
     "test:auto": "node tests/auto-project.mjs",
     "test:desktop:fps": "node tests/desktop-fps.mjs",
-    "test:edit": "node tests/edit-tools.mjs"
+    "test:edit": "node tests/edit-tools.mjs",
+    "test:cli": "node tests/cli.mjs",
+    "cli": "node bin/cutline.cjs"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
@@ -131,5 +133,8 @@
   "homepage": "https://github.com/MEZTKING/cutline-studio",
   "bugs": {
     "url": "https://github.com/MEZTKING/cutline-studio/issues"
+  },
+  "bin": {
+    "cutline": "bin/cutline.cjs"
   }
 }

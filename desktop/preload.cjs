@@ -50,4 +50,9 @@ contextBridge.exposeInMainWorld('cutlineDesktop', {
     ipcRenderer.on('update:available', handler);
     return () => ipcRenderer.removeListener('update:available', handler);
   },
+  automationJob: () => ipcRenderer.invoke('automation:job'),
+  automationProgress: (progress) => ipcRenderer.send('automation:progress', progress),
+  automationWrite: (buffer, filename) => ipcRenderer.invoke('automation:write', buffer, filename),
+  automationDone: () => ipcRenderer.send('automation:done'),
+  automationError: (message) => ipcRenderer.send('automation:error', message),
 });

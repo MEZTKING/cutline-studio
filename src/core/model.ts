@@ -486,9 +486,10 @@ export function defaultTransition(type: TransitionType): Transition {
 
 export function formatTimecode(seconds: number, fps = 30): string {
   const s = Math.max(0, seconds);
-  const totalFrames = Math.round(s * fps);
-  const f = totalFrames % fps;
-  const total = Math.floor(totalFrames / fps);
+  const nominal = Math.max(1, Math.round(fps));
+  const totalFrames = Math.round(s * nominal);
+  const f = totalFrames % nominal;
+  const total = Math.floor(totalFrames / nominal);
   const sec = total % 60;
   const min = Math.floor(total / 60) % 60;
   const hr = Math.floor(total / 3600);

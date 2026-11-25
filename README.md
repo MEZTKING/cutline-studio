@@ -8,7 +8,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.9.0 — two builds from one engine, with linked A/V editing, roll/slip tools, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.10.0 — two builds from one engine, now with a headless render CLI and localhost automation API, linked A/V editing, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -38,7 +38,7 @@ small IPC bridge. The web build remains zero-install and unchanged.
 | **Effects** | Ten transitions, auto-reframe, titles, captions | Keying, masks, motion tracking, Fusion-style node effects |
 | **Media** | Disk streaming, `.cutline` projects, autosave | Proxies, bundles/relink, background workers, media library |
 | **Updates** | Auto-check, SHA-256 verified download, portable self-replace | Code-signed NSIS updater, delta downloads |
-| **Delivery** | WebCodecs + FFmpeg H.264/HEVC/ProRes masters | Render queue, presets, watch folders, background export |
+| **Delivery** | WebCodecs + FFmpeg masters, headless CLI, localhost job API | YouTube/Vimeo publishing, render queue, watch folders, presets |
 
 ### App updates
 
@@ -58,6 +58,53 @@ This is the honest shape of "DaVinci + Premiere": each pillar needs real enginee
 built so pillars can land independently on the same project model and renderer.
 
 ![Cutline Heavy](docs/screens/desktop-heavy.png)
+
+## Automation: CLI + local API
+
+Cutline can render without the editor UI and accept jobs from other local services.
+
+### CLI
+
+Development:
+
+```bash
+npm run build
+npm run cli -- render project.cutline --out output.mp4 --width 1920 --height 1080 --fps 24
+```
+
+Packaged Windows (from the app folder):
+
+```powershell
+.\"Cutline Studio.exe" --render project.cutline --out output.mp4 --width 1920 --height 1080 --fps 24
+```
+
+Options: `--format auto|mp4|webm`, `--quality fast|balanced|high`, `--no-audio`,
+`--json` (JSON-lines progress + result). The hidden renderer uses the same compositor,
+colour grading, titles, transitions, and audio mix as the editor.
+
+### Local HTTP API
+
+```powershell
+.\"Cutline Studio.exe" --serve --port 4317 --token YOUR_SECRET
+```
+
+```bash
+curl http://127.0.0.1:4317/v1/health
+curl -X POST http://127.0.0.1:4317/v1/render \
+  -H "Authorization: Bearer YOUR_SECRET" -H "Content-Type: application/json" \
+  -d '{"projectPath":"C:/work/a.cutline","outputPath":"C:/work/a.mp4","width":1920,"height":1080,"fps":24}'
+curl -H "Authorization: Bearer YOUR_SECRET" http://127.0.0.1:4317/v1/jobs/<id>
+```
+
+- Binds **127.0.0.1 only**; every `/v1` route except `/v1/health` requires the bearer token.
+- Jobs are queued and rendered one at a time; progress, phase, output path, bytes, and errors are
+  visible on the job object.
+- If `--token` is omitted, a random token is written to the app data folder and printed on startup.
+- This is local automation, not a remote cloud service. **Direct YouTube/Vimeo upload is not
+  included yet** — publishing needs OAuth app credentials and platform review; see the roadmap.
+- The packaged Windows executable is a GUI app. `--render` writes its output and returns an exit
+  code, but Windows may not attach progress output to a console; prefer the HTTP API for services.
+- API jobs are in-memory and sequential; there is no cancel endpoint yet.
 
 ## Quick start
 
@@ -348,8 +395,8 @@ export → decode → offline reload), on-device caption generation from real sp
 SRT round-trip, auto-reframe with a moving face, titles and decimal inputs, export
 cancel-and-retry, audio pan/mute/presets through export, detach/link, roll/slip, J/L trims,
 fine scrub + thumbnails,
-source auto-match at 24 fps, fullscreen display-resolution preview, mobile/landscape layout,
-and the GPU colour page (LUT application,
+source auto-match at 24 fps, fullscreen display-resolution preview, detach/link, roll/slip,
+**headless CLI + local API renders with audio**, mobile/landscape layout, and the GPU colour page (LUT application,
 channel order, bypass, scopes, burned-in export, persistence, phone sheet). Reports are
 written to `test-results/`.
 
@@ -359,6 +406,7 @@ DISPLAY=:99 npm run test:color   # GPU colour page (needs a display + Mesa/Swift
 DISPLAY=:99 npm run test:updater # auto-check, dialog, verified download (Electron)
 DISPLAY=:99 npm run test:auto    # 24 fps auto-match, override, fullscreen canvas (headed)
 npm run test:edit                # detach/link, J/L trims, roll, slip
+npm run test:cli                 # headless render + local API (Electron, needs a display)
 DISPLAY=:99 npm run test:desktop:fps # exact FFmpeg fps + auto-match in Electron
 ```
 
@@ -396,6 +444,8 @@ it, please open an issue first.
 - Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
   media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
 - The **normal** preview is capped at 1280 px for performance; fullscreen uses display resolution (up to 4K). Neither changes export resolution.
+- Automation v1 renders the browser containers (MP4/WebM); the CLI does not yet request ProRes/HEVC masters or manage a persistent render queue. The API is local-only and renders one job at a time.
+- Direct publishing is not implemented. YouTube requires a Google OAuth client, consent-screen verification, and API quota; Vimeo needs an access token; TikTok/Instagram require app review and business accounts.
 - Browser frame-rate detection is an estimate from frame timestamps; the Windows build asks FFmpeg for the exact source fps.
 - Transitions require the clips to be adjacent on the same track; audio uses source
   handles, so a transition may shorten to the available audio.
@@ -415,6 +465,9 @@ it, please open an issue first.
 ---
 
 ## Roadmap to "top-tier"
+
+**Automation & delivery (next):** YouTube OAuth upload, Vimeo token upload, render queue,
+watch folders, project bundles/proxies.
 
 **P0 — trust and speed**
 - Backup/restore project bundles (zip with media), relink, cloud-free sync.
