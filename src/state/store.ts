@@ -12,6 +12,7 @@ import {
   patchClip,
   removeClip,
   removeTrack as removeTrackModel,
+  moveClipWithLinks,
   rippleDelete,
   splitAt,
   upsertKeyframe,
@@ -19,7 +20,6 @@ import {
   propValue,
   round,
   addClip as addClipModel,
-  moveClip as moveClipModel,
   clipEnd,
   sortedClips,
   type ActiveTransition,
@@ -94,6 +94,8 @@ interface EditorState {
   duplicateClip: (clipId: string) => void;
   liveMoveClip: (clipId: string, trackId: string, start: number) => void;
   moveClip: (clipId: string, trackId: string, start: number) => void;
+  detachAudio: (clipId: string) => void;
+  unlinkClip: (clipId: string) => void;
   livePatchClip: (clipId: string, patch: Partial<Clip>) => void;
   updateClip: (clipId: string, patch: Partial<Clip>, record?: boolean) => void;
   updateTrack: (trackId: string, patch: Partial<Track>) => void;
@@ -467,16 +469,74 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   liveMoveClip: (clipId, trackId, start) =>
     set((s) => {
-      const next = moveClipModel(s.project, clipId, trackId, Math.max(0, start));
+      const next = moveClipWithLinks(s.project, clipId, trackId, Math.max(0, start));
       if (next === s.project) return s;
       return { project: next, gestureDirty: true };
     }),
 
   moveClip: (clipId, trackId, start) =>
     set((s) => {
-      const next = moveClipModel(s.project, clipId, trackId, start);
+      const next = moveClipWithLinks(s.project, clipId, trackId, start);
       if (next === s.project) return s;
       return { project: next, past: pushHistory(s.past, s.project), future: [] };
+    }),
+
+  detachAudio: (clipId) =>
+    set((s) => {
+      const found = findClip(s.project, clipId);
+      if (!found || found.clip.audioDetached || found.track.kind !== 'video' || found.clip.text) return s;
+      const asset = s.assets[found.clip.assetId];
+      if (!asset?.hasAudio) return s;
+      let project = s.project;
+      let audioTrack = project.tracks.find((t) => t.kind === 'audio' && !t.locked);
+      if (!audioTrack) {
+        project = addTrackModel(project, 'audio');
+        audioTrack = project.tracks.find((t) => t.kind === 'audio');
+      }
+      if (!audioTrack) return s;
+      const linkId = uid('lnk');
+      const audioClip: Clip = {
+        ...found.clip,
+        id: uid('clp'),
+        name: `${found.clip.name} (audio)`,
+        linkId,
+        muted: false,
+        audioDetached: undefined,
+        transition: null,
+        text: undefined,
+        fill: undefined,
+      };
+      project = patchClip(project, found.clip.id, { linkId, audioDetached: true, muted: true });
+      project = {
+        ...project,
+        tracks: project.tracks.map((t) =>
+          t.id === audioTrack.id ? { ...t, clips: sortedClips({ ...t, clips: [...t.clips, audioClip] }) } : t,
+        ),
+      };
+      return {
+        project,
+        past: pushHistory(s.past, s.project),
+        future: [],
+        selection: { clipId: audioClip.id, trackId: audioTrack.id },
+      };
+    }),
+
+  unlinkClip: (clipId) =>
+    set((s) => {
+      const found = findClip(s.project, clipId);
+      const linkId = found?.clip.linkId;
+      if (!linkId) return s;
+      return {
+        project: {
+          ...s.project,
+          tracks: s.project.tracks.map((t) => ({
+            ...t,
+            clips: t.clips.map((c) => (c.linkId === linkId ? { ...c, linkId: undefined } : c)),
+          })),
+        },
+        past: pushHistory(s.past, s.project),
+        future: [],
+      };
     }),
 
   livePatchClip: (clipId, patch) =>

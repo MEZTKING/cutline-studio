@@ -148,6 +148,10 @@ export interface Clip {
   keyframes: Partial<Record<AnimatableProp, Keyframe[]>>;
   /** When true, scale 1 covers the frame (crops) instead of fitting inside it. */
   fill?: boolean;
+  /** Shared by detached A/V clips; linked clips move together. */
+  linkId?: string;
+  /** Video clip whose audio lives on a separate linked audio clip. */
+  audioDetached?: boolean;
   /** Present on title clips; they need no media asset. */
   text?: TextStyle;
 }

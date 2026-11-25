@@ -47,7 +47,7 @@ export function planAudio(project: Project, assets: Record<string, MediaAsset>, 
     if (track.muted) continue;
     if (anySolo && !track.solo) continue;
     for (const clip of track.clips) {
-      if (clip.muted) continue;
+      if (clip.muted || clip.audioDetached) continue;
       const asset = assets[clip.assetId];
       if (!asset?.audioBuffer) continue;
       if (clipEnd(clip) <= from + 0.005) continue;
@@ -154,7 +154,7 @@ export class AudioEngine {
     for (const track of project.tracks) {
       if (track.muted || (anySolo && !track.solo)) continue;
       for (const clip of track.clips) {
-        if (clip.muted) continue;
+        if (clip.muted || clip.audioDetached) continue;
         if (clipEnd(clip) > from && !assets[clip.assetId]?.audioBuffer) needed.add(clip.assetId);
       }
     }

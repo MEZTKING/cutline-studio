@@ -575,7 +575,7 @@ function ClipPanel({ clipId }: { clipId: string }) {
 
       {!clip.text && (
       <Section title="Audio & Speed" defaultOpen={asset?.kind === 'audio'}>
-        {asset?.kind !== 'image' && (
+        {asset && (asset.kind === 'audio' || asset.hasAudio) && !clip.audioDetached && (
           <>
             <div className="field">
               <label htmlFor="audio-type">Sound type</label>
@@ -650,6 +650,41 @@ function ClipPanel({ clipId }: { clipId: string }) {
               </label>
             </div>
             <div className="hint">Volume is shown in dB. Type applies an EQ/compression preset; all controls are baked into exports.</div>
+            {found.track.kind === 'video' && asset.hasAudio && (
+              <button
+                className="btn sm"
+                onClick={() => {
+                  const state = useEditor.getState();
+                  state.detachAudio(clip.id);
+                  state.notify('Audio detached to a linked clip · trim it independently for J/L cuts', 'success');
+                }}
+              >
+                <Icon name="link" size={12} /> Detach audio
+              </button>
+            )}
+          </>
+        )}
+        {(clip.audioDetached || clip.linkId) && (
+          <>
+            <div className="hint">
+              {clip.audioDetached
+                ? clip.linkId
+                  ? 'Audio is on a linked clip. Both move together; trim them independently to make J or L cuts.'
+                  : 'Audio is detached and unlinked. The audio clip now moves and trims independently.'
+                : 'Linked to the picture. Moves together; trim this clip earlier/later than the picture for J/L cuts.'}
+            </div>
+            {clip.linkId && (
+              <button
+                className="btn sm"
+                onClick={() => {
+                  const state = useEditor.getState();
+                  state.unlinkClip(clip.id);
+                  state.notify('A/V unlinked', 'info');
+                }}
+              >
+                <Icon name="link" size={12} /> Unlink A/V
+              </button>
+            )}
           </>
         )}
         <ParamRow

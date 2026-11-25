@@ -2583,3 +2583,36 @@ input[type="color"] {
 .stage:fullscreen .fullscreen-meta {
   display: block;
 }
+
+.roll-handle {
+  position: absolute;
+  top: 0;
+  width: 18px;
+  height: 6px;
+  transform: translateX(-50%);
+  z-index: 6;
+  border-radius: 0 0 4px 4px;
+  background: var(--warn);
+  opacity: 0;
+  cursor: ew-resize;
+  transition: opacity 0.12s ease;
+  touch-action: none;
+}
+
+.track-row:hover .roll-handle {
+  opacity: 0.55;
+}
+
+.roll-handle:hover {
+  opacity: 1 !important;
+  box-shadow: 0 0 0 1px rgba(255, 196, 107, 0.5);
+}
+
+.clip-link {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  z-index: 3;
+  color: var(--accent);
+  opacity: 0.85;
+}

@@ -173,8 +173,8 @@ export function Timeline() {
     e.preventDefault();
     e.stopPropagation();
     const handle = (e.target as HTMLElement).closest('[data-handle]') as HTMLElement | null;
-    const mode: 'move' | 'trim-start' | 'trim-end' =
-      handle?.dataset.handle === 'start' ? 'trim-start' : handle?.dataset.handle === 'end' ? 'trim-end' : 'move';
+    const mode: 'move' | 'trim-start' | 'trim-end' | 'slip' =
+      handle?.dataset.handle === 'start' ? 'trim-start' : handle?.dataset.handle === 'end' ? 'trim-end' : e.altKey && !clip.text ? 'slip' : 'move';
 
     const state = useEditor.getState();
     state.setPlaying(false);
@@ -219,6 +219,15 @@ export function Timeline() {
         return best;
       };
 
+      if (origin.mode === 'slip') {
+        if (asset.kind === 'image') return;
+        const maxIn = Math.max(0, asset.duration - original.duration * original.speed);
+        const nextIn = Math.min(maxIn, Math.max(0, original.inPoint + dt * original.speed));
+        setGuide(null);
+        store.livePatchClip(clip.id, { inPoint: nextIn });
+        return;
+      }
+
       if (origin.mode === 'move') {
         let nextStart = Math.max(0, original.start + dt);
         let guideAt: number | null = null;
@@ -245,12 +254,8 @@ export function Timeline() {
         const overTrack = proj.tracks.find((t) => t.id === overTrackId);
         const canMove = overTrack && !overTrack.locked && overTrack.kind === track.kind;
         const targetTrackId = canMove ? overTrackId : origin.trackId;
-        if (targetTrackId !== origin.trackId) {
-          store.liveMoveClip(clip.id, targetTrackId, nextStart);
-          origin.trackId = targetTrackId;
-        } else {
-          store.livePatchClip(clip.id, { start: nextStart });
-        }
+        store.liveMoveClip(clip.id, targetTrackId, nextStart);
+        origin.trackId = targetTrackId;
         return;
       }
 
@@ -291,6 +296,55 @@ export function Timeline() {
       setGuide(null);
     };
 
+    window.addEventListener('pointermove', move, { passive: true });
+    window.addEventListener('pointerup', finish, { once: true });
+    window.addEventListener('pointercancel', finish, { once: true });
+  };
+
+  const startRollEdit = (
+    e: ReactPointerEvent<HTMLDivElement>,
+    prev: Clip,
+    clip: Clip,
+    track: Track,
+  ) => {
+    if (track.locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const state = useEditor.getState();
+    const prevAsset = state.assets[prev.assetId];
+    const clipAsset = state.assets[clip.assetId];
+    state.setPlaying(false);
+    state.select(clip.id, track.id);
+    state.beginGesture();
+    const startX = e.clientX;
+    const prevDur = prev.duration;
+    const clipStart = clip.start;
+    const clipDur = clip.duration;
+    const clipIn = clip.inPoint;
+    const maxPrev =
+      prevAsset && prevAsset.kind !== 'image' ? Math.max(0.1, (prevAsset.duration - prev.inPoint) / Math.max(0.1, prev.speed)) : Number.POSITIVE_INFINITY;
+    const maxClip =
+      clipAsset && clipAsset.kind !== 'image' ? Math.max(0.1, (clipAsset.duration - clip.inPoint) / Math.max(0.1, clip.speed)) : Number.POSITIVE_INFINITY;
+    const minDelta = Math.max(MIN_DUR - prevDur, -(clipDur - MIN_DUR), -clipStart, -(clipIn / Math.max(0.1, clip.speed)));
+    const maxDelta = Math.min(maxPrev - prevDur, maxClip - clipDur, clipDur - MIN_DUR);
+    const move = (ev: PointerEvent) => {
+      let delta = (ev.clientX - startX) / zoom;
+      delta = Math.min(maxDelta, Math.max(minDelta, delta));
+      if (Math.abs(delta) < 0.001) return;
+      const store = useEditor.getState();
+      store.livePatchClip(prev.id, { duration: prevDur + delta });
+      store.livePatchClip(clip.id, {
+        start: clipStart + delta,
+        duration: clipDur - delta,
+        inPoint: clipAsset?.kind === 'image' ? clipIn : clipIn + delta * clip.speed,
+      });
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      useEditor.getState().endGesture();
+    };
     window.addEventListener('pointermove', move, { passive: true });
     window.addEventListener('pointerup', finish, { once: true });
     window.addEventListener('pointercancel', finish, { once: true });
@@ -587,7 +641,7 @@ export function Timeline() {
                         className={`clip ${track.kind} ${isText ? 'text' : ''} ${isCaption ? 'caption' : ''} ${selected ? 'selected' : ''}`}
                         style={{ left: clip.start * zoom, width }}
                         onPointerDown={(e) => startClipDrag(e, clip, track)}
-                        title={`${clip.name} · ${formatDuration(clip.duration)}`}
+                        title={`${clip.name} · ${formatDuration(clip.duration)} · Alt-drag to slip`}
                       >
                         {asset?.thumbnail && (
                           <div
@@ -618,7 +672,12 @@ export function Timeline() {
                             <Icon name="diamond" size={8} />
                           </div>
                         )}
-                        {clip.muted && (
+                        {clip.linkId && (
+                          <div className="clip-link" title="Linked A/V — moves with its partner">
+                            <Icon name="link" size={9} />
+                          </div>
+                        )}
+                        {clip.muted && !clip.audioDetached && (
                           <div className="clip-muted" title="Clip audio muted">
                             <Icon name="mute" size={9} />
                           </div>
@@ -626,6 +685,20 @@ export function Timeline() {
                         <div className="clip-handle start" data-handle="start" />
                         <div className="clip-handle end" data-handle="end" />
                       </div>
+                    );
+                  })}
+                  {track.clips.map((clip) => {
+                    const prev = previousClip(track, clip);
+                    if (!prev || clip.text || prev.text || clip.transition || prev.transition) return null;
+                    if (Math.abs(clipEnd(prev) - clip.start) > 0.05) return null;
+                    return (
+                      <div
+                        key={`roll-${clip.id}`}
+                        className="roll-handle"
+                        style={{ left: clip.start * zoom }}
+                        title="Roll edit — drag this cut"
+                        onPointerDown={(e) => startRollEdit(e, prev, clip, track)}
+                      />
                     );
                   })}
                 </div>

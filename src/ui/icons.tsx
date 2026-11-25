@@ -48,6 +48,7 @@ const P = {
   palette: <><path d="M12 3a9 9 0 100 18c1.6 0 2.4-1.2 1.6-2.4-.8-1.3 0-2.6 1.4-2.6H18a3 3 0 003-3c0-5-4-10-9-10z" /><circle cx="7.5" cy="11" r="1" fill="currentColor" /><circle cx="10" cy="7" r="1" fill="currentColor" /><circle cx="15" cy="7.5" r="1" fill="currentColor" /></>,
   dial: <><circle cx="12" cy="12" r="8" /><path d="M12 12l4-4" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /></>,
   gauge: <><path d="M4 16a8 8 0 0116 0" /><path d="M12 16l3.5-5" /><circle cx="12" cy="16" r="1.6" fill="currentColor" /><path d="M3 20h18" /></>,
+  link: <><path d="M10 13a5 5 0 007.07 0l2-2a5 5 0 00-7.07-7.07l-1.1 1.1" /><path d="M14 11a5 5 0 00-7.07 0l-2 2a5 5 0 007.07 7.07l1.1-1.1" /></>,
   sliders: <><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="7" cy="18" r="2" /></>,
 };
 

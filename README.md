@@ -8,7 +8,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.8.0 — two builds from one engine, with source-aware project setup, a fullscreen program monitor, a DaVinci-style colour page, an audio mixer, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.9.0 — two builds from one engine, with linked A/V editing, roll/slip tools, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -32,7 +32,7 @@ small IPC bridge. The web build remains zero-install and unchanged.
 
 | Pillar | Today | Next |
 | --- | --- | --- |
-| **Edit** | Multi-track timeline, trim/split/ripple delete, snapping, keyframes, undo | Roll / slip / slide, J/L cuts, multi-select, insert/overwrite, multicam, nested sequences |
+| **Edit** | Multi-track timeline, trim/split/ripple, roll, slip, linked A/V detach, J/L trims, snapping, keyframes, undo | Slide, multi-select, insert/overwrite, multicam, nested sequences |
 | **Color** | GPU primary grade, lift/gamma/gain wheels, 3D LUTs, live scopes, bypass | Curves, HSL qualifier, power windows, node graph, keyframed grades, HDR |
 | **Audio** | dB gain, pan, 3-band EQ, compressor, normalize, fades, presets, solo/mute | Buses, ducking, 5.1, denoise |
 | **Effects** | Ten transitions, auto-reframe, titles, captions | Keying, masks, motion tracking, Fusion-style node effects |
@@ -50,7 +50,7 @@ small IPC bridge. The web build remains zero-install and unchanged.
 - Feed URL is editable in the dialog (default: the GitHub Releases `latest.json`);
   downloads run in the main process, not the renderer.
 - The first updater-equipped build was **0.7.0** — older builds need one manual download.
-- **0.8.0** is the first release that exercises the updater from a public build.
+- **0.8.0** was the first release to exercise the updater; **0.9.0** is the next update target.
 
 ![App updater](docs/screens/desktop-update.png)
 
@@ -121,8 +121,9 @@ Run this on the Windows machine before trusting it with a project:
 3. **File → Save Project**, quit, relaunch: the project should reopen; autosave recovers.
 4. **Export** with **Desktop master with FFmpeg**: H.264, then ProRes; play both files.
 5. Import a 24 fps clip: Project settings should auto-match its size/fps; open fullscreen.
-6. Colour page: import a `.cube` LUT, confirm scopes draw and the grade is in the export.
-7. Report the exact error text and Windows version if anything fails.
+6. Detach audio, trim the audio under the video for a J/L cut, then drag the amber cut bar to roll.
+7. Colour page: import a `.cube` LUT, confirm scopes draw and the grade is in the export.
+8. Report the exact error text and Windows version if anything fails.
 
 Desktop-only behaviour:
 - **File → Import Media** streams files from disk; nothing is copied into the app.
@@ -187,6 +188,11 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 - Frame stepping, timeline scrubbing, scrubbing while paused, auto-scroll during playback.
 - **Scrub preview** — hover (or scrub) the ruler to see the composited frame and timecode.
 - **Fine scrub** (`F`) — 1/5-speed, frame-snapped ruler dragging for exact cuts.
+- **Slip** — `Alt`-drag a clip to change its source in-point without moving it.
+- **Roll** — drag the thin amber bar at a cut to move the edit point and trim both clips at once.
+- **Detach audio** — creates a linked audio clip on an audio track. Linked clips move together,
+  while trims stay independent for **J and L cuts**.
+- **Unlink A/V** when you want both halves to move independently.
 - Undo/redo with 50 steps, per-gesture history (a drag is one undo step).
 
 **Look**
@@ -214,6 +220,9 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 - **Viewer bypass** for before/after, plus a reset and a dedicated Color workspace on desktop
   and a bottom sheet on phones that keeps the preview visible.
 - Requires WebGL2 for LUTs and wheels; without it the basic sliders fall back to Canvas2D filters.
+
+**Edit tools**
+![Roll, slip, detach](docs/screens/desktop-edit-tools.png)
 
 **Audio page**
 ![Audio controls](docs/screens/audio-panel.png)
@@ -276,6 +285,8 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 | Captions panel | `C` |
 | Auto-reframe | `R` |
 | Fine scrub | `F` |
+| Slip a clip | `Alt` + drag |
+| Roll an edit | drag the amber cut bar |
 | Undo / redo | `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z` |
 | Step a frame | `←` / `→` (add `Shift` for 1 s) |
 | Start / end | `Home` / `End` |
@@ -335,7 +346,8 @@ duplicate/undo, and persistence.
 Latest runs: **all suites passing** — end-to-end smoke (import → edit → transition →
 export → decode → offline reload), on-device caption generation from real speech,
 SRT round-trip, auto-reframe with a moving face, titles and decimal inputs, export
-cancel-and-retry, audio pan/mute/presets through export, fine scrub + thumbnails,
+cancel-and-retry, audio pan/mute/presets through export, detach/link, roll/slip, J/L trims,
+fine scrub + thumbnails,
 source auto-match at 24 fps, fullscreen display-resolution preview, mobile/landscape layout,
 and the GPU colour page (LUT application,
 channel order, bypass, scopes, burned-in export, persistence, phone sheet). Reports are
@@ -346,6 +358,7 @@ npm test          # SRT + framing math, smoke, features, mobile, captions, auto-
 DISPLAY=:99 npm run test:color   # GPU colour page (needs a display + Mesa/SwiftShader)
 DISPLAY=:99 npm run test:updater # auto-check, dialog, verified download (Electron)
 DISPLAY=:99 npm run test:auto    # 24 fps auto-match, override, fullscreen canvas (headed)
+npm run test:edit                # detach/link, J/L trims, roll, slip
 DISPLAY=:99 npm run test:desktop:fps # exact FFmpeg fps + auto-match in Electron
 ```
 
@@ -378,6 +391,8 @@ it, please open an issue first.
 - Audio v1 has per-clip EQ/compression but no buses, sidechain ducking, noise reduction, or 5.1.
 - Fine scrub is 1/5 speed; hover preview renders a small composited frame and is throttled
   for performance.
+- Edit v1 has roll/slip and linked audio detach, but **no slide, multi-select, insert/overwrite,
+  multicam, or nested sequences** yet. Linked clips move together but trims stay independent by design.
 - Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
   media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
 - The **normal** preview is capped at 1280 px for performance; fullscreen uses display resolution (up to 4K). Neither changes export resolution.

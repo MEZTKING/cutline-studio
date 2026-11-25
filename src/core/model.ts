@@ -417,6 +417,30 @@ export function moveClip(project: Project, clipId: string, targetTrackId: string
   };
 }
 
+export function moveClipWithLinks(project: Project, clipId: string, targetTrackId: string, newStart: number): Project {
+  const found = findClip(project, clipId);
+  if (!found || !found.clip.linkId) return moveClip(project, clipId, targetTrackId, newStart);
+  const linkId = found.clip.linkId;
+  const group: { clip: Clip; track: Track }[] = [];
+  for (const track of project.tracks) {
+    for (const clip of track.clips) if (clip.linkId === linkId) group.push({ clip, track });
+  }
+  if (group.length < 2) return moveClip(project, clipId, targetTrackId, newStart);
+  if (group.some((g) => g.track.locked)) return project;
+  const minStart = Math.min(...group.map((g) => g.clip.start));
+  const delta = Math.max(Math.max(0, newStart) - found.clip.start, -minStart);
+  const next = moveClip(project, clipId, targetTrackId, found.clip.start + delta);
+  if (next === project || delta === 0) return next;
+  let updated = next;
+  for (const g of group) {
+    if (g.clip.id === clipId) continue;
+    const current = findClip(updated, g.clip.id);
+    if (!current) continue;
+    updated = patchClip(updated, g.clip.id, { start: round(current.clip.start + delta) });
+  }
+  return updated;
+}
+
 export function addTrack(project: Project, kind: TrackKind): Project {
   const count = project.tracks.filter((t) => t.kind === kind).length + 1;
   const track: Track = {
