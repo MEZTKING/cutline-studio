@@ -64,6 +64,57 @@ export interface ProjectLut {
   domainMax?: [number, number, number];
 }
 
+export interface HslQualifier {
+  enabled: boolean;
+  /** Hue centre 0..1. */
+  hue: number;
+  /** Hue half-range 0..0.5. */
+  hueRange: number;
+  satMin: number;
+  satMax: number;
+  lumMin: number;
+  lumMax: number;
+  /** Feather width 0..1. */
+  softness: number;
+  invert: boolean;
+}
+
+export interface PowerWindow {
+  enabled: boolean;
+  shape: 'ellipse' | 'rect';
+  /** Normalised centre. */
+  cx: number;
+  cy: number;
+  /** Normalised half extents. */
+  width: number;
+  height: number;
+  feather: number;
+  invert: boolean;
+}
+
+export const QUALIFIER_DEFAULTS: HslQualifier = {
+  enabled: false,
+  hue: 0,
+  hueRange: 0.08,
+  satMin: 0.15,
+  satMax: 1,
+  lumMin: 0,
+  lumMax: 1,
+  softness: 0.12,
+  invert: false,
+};
+
+export const WINDOW_DEFAULTS: PowerWindow = {
+  enabled: false,
+  shape: 'ellipse',
+  cx: 0.5,
+  cy: 0.5,
+  width: 0.3,
+  height: 0.3,
+  feather: 0.25,
+  invert: false,
+};
+
 export interface ColorGrade {
   brightness: number;
   contrast: number;
@@ -78,6 +129,8 @@ export interface ColorGrade {
   lutId?: string | null;
   /** 0..1 blend between the original and the LUT. */
   lutMix?: number;
+  qualifier?: HslQualifier;
+  window?: PowerWindow;
 }
 
 export type TransitionType =
@@ -214,6 +267,8 @@ export const COLOR_DEFAULTS: ColorGrade = {
   blur: 0,
   temperature: 0,
   vignette: 0,
+  qualifier: { ...QUALIFIER_DEFAULTS },
+  window: { ...WINDOW_DEFAULTS },
   lift: { ...ZERO_WHEEL },
   gamma: { ...ZERO_WHEEL },
   gain: { ...ZERO_WHEEL },

@@ -1,4 +1,4 @@
-import { COLOR_DEFAULTS, ZERO_WHEEL, type ColorGrade, type ColorWheel } from '../core/types';
+import { COLOR_DEFAULTS, QUALIFIER_DEFAULTS, WINDOW_DEFAULTS, ZERO_WHEEL, type ColorGrade, type ColorWheel, type HslQualifier, type PowerWindow } from '../core/types';
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
@@ -40,6 +40,8 @@ export interface GradeUniforms {
   saturation: number;
   temperature: number;
   hue: number;
+  qualifier: HslQualifier;
+  window: PowerWindow;
 }
 
 /** Convert the UI grade into shader-friendly uniforms. */
@@ -76,6 +78,8 @@ export function gradeUniforms(grade: ColorGrade | undefined): GradeUniforms {
     saturation: clamp(1 + (g.saturation ?? 0) / 100, 0, 4),
     temperature: clamp((g.temperature ?? 0) / 100, -1, 1),
     hue: ((g.hue ?? 0) * Math.PI) / 180,
+    qualifier: { ...QUALIFIER_DEFAULTS, ...(g.qualifier ?? {}) },
+    window: { ...WINDOW_DEFAULTS, ...(g.window ?? {}) },
   };
 }
 
@@ -93,6 +97,8 @@ export function isNeutralGrade(grade: ColorGrade | undefined): boolean {
     !g.blur &&
     !(g.lift && (g.lift.x || g.lift.y || g.lift.master)) &&
     !(g.gamma && (g.gamma.x || g.gamma.y || g.gamma.master)) &&
-    !(g.gain && (g.gain.x || g.gain.y || g.gain.master))
+    !(g.gain && (g.gain.x || g.gain.y || g.gain.master)) &&
+    !g.qualifier?.enabled &&
+    !g.window?.enabled
   );
 }

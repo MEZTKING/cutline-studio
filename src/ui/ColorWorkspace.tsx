@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { defaultColor, findClip } from '../core/model';
-import type { ColorGrade, ColorWheel } from '../core/types';
+import { QUALIFIER_DEFAULTS, WINDOW_DEFAULTS, type ColorGrade, type ColorWheel } from '../core/types';
 import { ZERO_WHEEL } from '../core/types';
 import { parseCube, lutChoices, lutLabel } from '../color/lut';
 import { webglAvailable } from '../color/colorizer';
@@ -334,6 +334,8 @@ export function ColorWorkspace({ showHead = true }: { showHead?: boolean }) {
 
     const { clip } = found;
     const color = clip.color;
+    const qualifier = { ...QUALIFIER_DEFAULTS, ...(color.qualifier ?? {}) };
+    const powerWindow = { ...WINDOW_DEFAULTS, ...(color.window ?? {}) };
     const lift = color.lift ?? ZERO_WHEEL;
     const gamma = color.gamma ?? ZERO_WHEEL;
     const gain = color.gain ?? ZERO_WHEEL;
@@ -505,8 +507,69 @@ export function ColorWorkspace({ showHead = true }: { showHead?: boolean }) {
             </div>
           </div>
 
+          <div className="section color-card">
+            <div className="section-head">
+              <Icon name="sliders" size={11} />
+              <span>HSL qualifier</span>
+            </div>
+            <div className="section-body">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={qualifier.enabled}
+                  onChange={(e) => setColor({ qualifier: { ...qualifier, enabled: e.target.checked } })}
+                />
+                Restrict the grade to a colour range
+              </label>
+              <ColorSlider label="Hue" value={qualifier.hue * 360} min={0} max={360} step={1} onChange={(v) => setColor({ qualifier: { ...qualifier, hue: v / 360 } })} />
+              <ColorSlider label="Range" value={qualifier.hueRange * 360} min={0} max={180} step={1} onChange={(v) => setColor({ qualifier: { ...qualifier, hueRange: v / 360 } })} />
+              <ColorSlider label="Sat min" value={qualifier.satMin * 100} min={0} max={100} step={1} onChange={(v) => setColor({ qualifier: { ...qualifier, satMin: v / 100 } })} />
+              <ColorSlider label="Sat max" value={qualifier.satMax * 100} min={0} max={100} step={1} onChange={(v) => setColor({ qualifier: { ...qualifier, satMax: v / 100 } })} />
+              <ColorSlider label="Luma min" value={qualifier.lumMin * 100} min={0} max={100} step={1} onChange={(v) => setColor({ qualifier: { ...qualifier, lumMin: v / 100 } })} />
+              <ColorSlider label="Luma max" value={qualifier.lumMax * 100} min={0} max={100} step={1} onChange={(v) => setColor({ qualifier: { ...qualifier, lumMax: v / 100 } })} />
+              <ColorSlider label="Softness" value={qualifier.softness * 100} min={0} max={100} step={1} onChange={(v) => setColor({ qualifier: { ...qualifier, softness: v / 100 } })} />
+              <label className="toggle-row">
+                <input type="checkbox" checked={qualifier.invert} onChange={(e) => setColor({ qualifier: { ...qualifier, invert: e.target.checked } })} />
+                Invert qualifier
+              </label>
+            </div>
+          </div>
+
+          <div className="section color-card">
+            <div className="section-head">
+              <Icon name="layers" size={11} />
+              <span>Power window</span>
+            </div>
+            <div className="section-body">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={powerWindow.enabled}
+                  onChange={(e) => setColor({ window: { ...powerWindow, enabled: e.target.checked } })}
+                />
+                Limit the grade to a shape
+              </label>
+              <div className="field">
+                <label>Shape</label>
+                <select value={powerWindow.shape} onChange={(e) => setColor({ window: { ...powerWindow, shape: e.target.value as 'ellipse' | 'rect' } })}>
+                  <option value="ellipse">Ellipse</option>
+                  <option value="rect">Rectangle</option>
+                </select>
+              </div>
+              <ColorSlider label="Centre X" value={powerWindow.cx * 100} min={0} max={100} step={1} onChange={(v) => setColor({ window: { ...powerWindow, cx: v / 100 } })} />
+              <ColorSlider label="Centre Y" value={powerWindow.cy * 100} min={0} max={100} step={1} onChange={(v) => setColor({ window: { ...powerWindow, cy: v / 100 } })} />
+              <ColorSlider label="Width" value={powerWindow.width * 100} min={2} max={100} step={1} onChange={(v) => setColor({ window: { ...powerWindow, width: v / 100 } })} />
+              <ColorSlider label="Height" value={powerWindow.height * 100} min={2} max={100} step={1} onChange={(v) => setColor({ window: { ...powerWindow, height: v / 100 } })} />
+              <ColorSlider label="Feather" value={powerWindow.feather * 100} min={0} max={100} step={1} onChange={(v) => setColor({ window: { ...powerWindow, feather: v / 100 } })} />
+              <label className="toggle-row">
+                <input type="checkbox" checked={powerWindow.invert} onChange={(e) => setColor({ window: { ...powerWindow, invert: e.target.checked } })} />
+                Invert window
+              </label>
+            </div>
+          </div>
+
           <div className="hint">
-            The viewer bypass only affects preview; exports always use the full grade. Colour is currently a primary grade per clip.
+            The viewer bypass only affects preview; exports always use the full grade. Qualifier and power window restrict the primary grade and LUT, and are baked into exports.
           </div>
 
           <input

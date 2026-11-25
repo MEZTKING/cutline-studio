@@ -32,6 +32,38 @@ uniform float u_contrast;
 uniform float u_saturation;
 uniform float u_temperature;
 uniform float u_hue;
+uniform float u_qualOn;
+uniform float u_qualHue;
+uniform float u_qualRange;
+uniform float u_qualSatMin;
+uniform float u_qualSatMax;
+uniform float u_qualLumMin;
+uniform float u_qualLumMax;
+uniform float u_qualSoft;
+uniform float u_qualInvert;
+uniform float u_winOn;
+uniform float u_winShape;
+uniform vec2 u_winCenter;
+uniform vec2 u_winSize;
+uniform float u_winFeather;
+uniform float u_winInvert;
+
+vec3 rgb2hsl(vec3 c) {
+  float mx = max(max(c.r, c.g), c.b);
+  float mn = min(min(c.r, c.g), c.b);
+  float l = (mx + mn) * 0.5;
+  float h = 0.0;
+  float s = 0.0;
+  float d = mx - mn;
+  if (d > 1e-5) {
+    s = l > 0.5 ? d / max(1e-5, 2.0 - mx - mn) : d / max(1e-5, mx + mn);
+    if (mx == c.r) h = (c.g - c.b) / d + (c.g < c.b ? 6.0 : 0.0);
+    else if (mx == c.g) h = (c.b - c.r) / d + 2.0;
+    else h = (c.r - c.g) / d + 4.0;
+    h /= 6.0;
+  }
+  return vec3(h, s, l);
+}
 
 vec3 hueRotate(vec3 color, float angle) {
   const vec3 k = vec3(0.57735026919);
@@ -42,6 +74,7 @@ vec3 hueRotate(vec3 color, float angle) {
 
 void main() {
   vec4 src = texture(u_tex, v_uv);
+  vec3 orig = src.rgb;
   vec3 c = src.rgb;
   c *= u_exposure;
   c = (c - 0.5) * u_contrast + 0.5;
@@ -59,6 +92,28 @@ void main() {
     vec3 graded = texture(u_lut, coord).rgb;
     c = mix(c, graded, u_lutMix);
   }
+  float mask = 1.0;
+  if (u_qualOn > 0.5) {
+    vec3 hsl = rgb2hsl(orig);
+    float soft = max(0.003, u_qualSoft * 0.25);
+    float hueDist = min(abs(hsl.x - u_qualHue), 1.0 - abs(hsl.x - u_qualHue));
+    float hueMask = 1.0 - smoothstep(u_qualRange, u_qualRange + soft, hueDist);
+    float satMask = smoothstep(u_qualSatMin - soft, u_qualSatMin, hsl.y) * (1.0 - smoothstep(u_qualSatMax, u_qualSatMax + soft, hsl.y));
+    float lumMask = smoothstep(u_qualLumMin - soft, u_qualLumMin, hsl.z) * (1.0 - smoothstep(u_qualLumMax, u_qualLumMax + soft, hsl.z));
+    float q = hueMask * satMask * lumMask;
+    if (u_qualInvert > 0.5) q = 1.0 - q;
+    mask *= q;
+  }
+  if (u_winOn > 0.5) {
+    vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);
+    vec2 p = (uv - u_winCenter) / max(u_winSize, vec2(0.001));
+    float d = u_winShape > 0.5 ? max(abs(p.x), abs(p.y)) : length(p);
+    float feather = clamp(u_winFeather, 0.001, 0.999);
+    float w = 1.0 - smoothstep(1.0 - feather, 1.0, d);
+    if (u_winInvert > 0.5) w = 1.0 - w;
+    mask *= w;
+  }
+  c = mix(orig, c, clamp(mask, 0.0, 1.0));
   outColor = vec4(clamp(c, 0.0, 1.0), src.a);
 }`;
 
@@ -139,6 +194,8 @@ class Colorizer {
     const names = [
       'u_tex', 'u_lut', 'u_useLut', 'u_lutMix', 'u_lutSize', 'u_lutDomainMin', 'u_lutDomainMax',
       'u_lift', 'u_gain', 'u_gamma', 'u_exposure', 'u_contrast', 'u_saturation', 'u_temperature', 'u_hue',
+      'u_qualOn', 'u_qualHue', 'u_qualRange', 'u_qualSatMin', 'u_qualSatMax', 'u_qualLumMin', 'u_qualLumMax', 'u_qualSoft', 'u_qualInvert',
+      'u_winOn', 'u_winShape', 'u_winCenter', 'u_winSize', 'u_winFeather', 'u_winInvert',
     ];
     for (const name of names) this.uniforms[name] = gl.getUniformLocation(program, name);
     gl.useProgram(program);
@@ -237,6 +294,21 @@ class Colorizer {
     gl.uniform1f(uu.u_saturation ?? null, u.saturation);
     gl.uniform1f(uu.u_temperature ?? null, u.temperature);
     gl.uniform1f(uu.u_hue ?? null, u.hue);
+    gl.uniform1f(uu.u_qualOn ?? null, u.qualifier.enabled ? 1 : 0);
+    gl.uniform1f(uu.u_qualHue ?? null, u.qualifier.hue);
+    gl.uniform1f(uu.u_qualRange ?? null, u.qualifier.hueRange);
+    gl.uniform1f(uu.u_qualSatMin ?? null, u.qualifier.satMin);
+    gl.uniform1f(uu.u_qualSatMax ?? null, u.qualifier.satMax);
+    gl.uniform1f(uu.u_qualLumMin ?? null, u.qualifier.lumMin);
+    gl.uniform1f(uu.u_qualLumMax ?? null, u.qualifier.lumMax);
+    gl.uniform1f(uu.u_qualSoft ?? null, u.qualifier.softness);
+    gl.uniform1f(uu.u_qualInvert ?? null, u.qualifier.invert ? 1 : 0);
+    gl.uniform1f(uu.u_winOn ?? null, u.window.enabled ? 1 : 0);
+    gl.uniform1f(uu.u_winShape ?? null, u.window.shape === 'rect' ? 1 : 0);
+    gl.uniform2fv(uu.u_winCenter ?? null, [u.window.cx, u.window.cy]);
+    gl.uniform2fv(uu.u_winSize ?? null, [u.window.width, u.window.height]);
+    gl.uniform1f(uu.u_winFeather ?? null, u.window.feather);
+    gl.uniform1f(uu.u_winInvert ?? null, u.window.invert ? 1 : 0);
     gl.uniform3fv(uu.u_lift ?? null, u.lift);
     gl.uniform3fv(uu.u_gain ?? null, u.gain);
     gl.uniform3fv(uu.u_gamma ?? null, u.gamma);

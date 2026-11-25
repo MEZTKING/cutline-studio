@@ -8,7 +8,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.15.0 — two builds from one engine, now with insert/overwrite, multi-select/slide, render queue + watch folders, portable project bundles + relink, a headless render CLI and localhost automation API, linked A/V editing, source-aware projects, a fullscreen monitor, a DaVinci-style colour page, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.16.0 — two builds from one engine, now with HSL qualifiers and power windows in the colour page, insert/overwrite, multi-select/slide, render queue + watch folders, portable bundles + relink, CLI/local API, linked A/V editing, source-aware projects, a fullscreen monitor, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -33,7 +33,7 @@ small IPC bridge. The web build remains zero-install and unchanged.
 | Pillar | Today | Next |
 | --- | --- | --- |
 | **Edit** | Multi-track timeline, trim/split/ripple, roll, slip, slide, insert/overwrite, multi-select group move/delete, insert/overwrite, linked A/V detach, J/L trims, snapping, keyframes, undo | Marquee select, multicam, nested sequences |
-| **Color** | GPU primary grade, lift/gamma/gain wheels, 3D LUTs, live scopes, bypass | Curves, HSL qualifier, power windows, node graph, keyframed grades, HDR |
+| **Color** | GPU primary grade, wheels, 3D LUTs, HSL qualifier, feathered power windows, live scopes, bypass | Curves, node graph, keyframed grades, HDR/ACES |
 | **Audio** | dB gain, pan, 3-band EQ, compressor, normalize, fades, presets, solo/mute | Buses, ducking, 5.1, denoise |
 | **Effects** | Ten transitions, auto-reframe, titles, captions | Keying, masks, motion tracking, Fusion-style node effects |
 | **Media** | Disk streaming, portable bundles + folder relink, autosave | Proxies, ZIP delivery, background workers, media library |
@@ -329,7 +329,14 @@ project switches to **Custom**; **Match source** re-applies it at any time.
 - **Live scopes**: RGB waveform, vectorscope, and histogram sampled from the viewer.
 - **Viewer bypass** for before/after, plus a reset and a dedicated Color workspace on desktop
   and a bottom sheet on phones that keeps the preview visible.
-- Requires WebGL2 for LUTs and wheels; without it the basic sliders fall back to Canvas2D filters.
+- **HSL qualifier** — hue centre/range, saturation and luminance limits, softness, and
+  invert. The primary grade and LUT only affect the selected colour range.
+- **Power window** — feathered ellipse or rectangle with position/size, invert, and GPU masking.
+  Qualifier and window compose; both are baked into exports.
+- Requires WebGL2 for LUTs, wheels, qualifier, and window; without it the basic sliders fall back
+  to Canvas2D filters.
+
+![Colour secondaries](docs/screens/color-secondaries.png)
 
 **Edit tools**
 ![Roll, slip, detach](docs/screens/desktop-edit-tools.png)
@@ -472,12 +479,13 @@ multi-select group move/delete,
 **portable bundles with media copying/relative paths/move-and-reopen**, **background render queue
 with presets and watch folders**, **headless CLI + local API renders with audio**, mobile/landscape
 layout, and the GPU colour page (LUT application,
-channel order, bypass, scopes, burned-in export, persistence, phone sheet). Reports are
+channel order, bypass, scopes, burned-in export, persistence, phone sheet) plus qualifier/window masks. Reports are
 written to `test-results/`.
 
 ```bash
 npm test          # SRT + framing math, smoke, features, mobile, captions, auto-reframe
 DISPLAY=:99 npm run test:color   # GPU colour page (needs a display + Mesa/SwiftShader)
+DISPLAY=:99 npm run test:color2  # HSL qualifier + power window pixels
 DISPLAY=:99 npm run test:updater # auto-check, dialog, verified download (Electron)
 DISPLAY=:99 npm run test:auto    # 24 fps auto-match, override, fullscreen canvas (headed)
 npm run test:edit                # detach/link, J/L trims, roll, slip
@@ -514,8 +522,8 @@ it, please open an issue first.
 
 - **Not parity yet.** No masks/tracking, no multicam, no proxy media, no collaboration,
   no HDR/colour management, no Fairlight/Fusion equivalents.
-- Colour v1 is a **primary grade per clip**: no curves, HSL qualifiers, power windows,
-  node graphs, or keyframed grades yet. LUT import is 3D `.cube` only.
+- Colour v1 has qualifier/window secondaries but still **no curves, node graph, keyframed
+grades, or HDR/ACES management**. LUT import is 3D `.cube` only.
 - Audio v1 has per-clip EQ/compression but no buses, sidechain ducking, noise reduction, or 5.1.
 - Fine scrub is 1/5 speed; hover preview renders a small composited frame and is throttled
   for performance.
