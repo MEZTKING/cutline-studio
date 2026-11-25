@@ -22,6 +22,7 @@ const { createReadStream } = require('node:fs');
 const { Readable } = require('node:stream');
 const { pathToFileURL } = require('node:url');
 const { spawn } = require('node:child_process');
+const { Updater } = require('./updater.cjs');
 
 app.setName('Cutline Studio');
 if (process.env.CUTLINE_USER_DATA) {
@@ -34,6 +35,15 @@ if (process.env.CUTLINE_SOFTWARE === '1') {
 const DIST = path.join(__dirname, '..', 'dist');
 const DEV_URL = process.env.CUTLINE_DEV_URL || null;
 const IS_TEST = process.env.CUTLINE_TEST === '1';
+const UPDATE_DEV = process.env.CUTLINE_UPDATE_ALLOW_DEV === '1';
+const updater = new Updater();
+let lastUpdateInfo = null;
+let updateConfig = {};
+try {
+  updateConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'update-config.json'), 'utf8'));
+} catch {
+  updateConfig = {};
+}
 const MEDIA_FILTERS = [
   {
     name: 'Media',
@@ -98,6 +108,25 @@ function loadSettings() {
 async function saveSettings(patch) {
   const next = { ...loadSettings(), ...patch };
   await writeJsonAtomic(settingsFile(), next);
+}
+
+function updateFeedUrl() {
+  return process.env.CUTLINE_UPDATE_URL || loadSettings().updateFeedUrl || updateConfig.feedUrl || '';
+}
+
+async function autoUpdateCheck() {
+  const feed = updateFeedUrl();
+  if (!feed) return;
+  try {
+    const info = await updater.check(feed, app.getVersion());
+    if (!info) return;
+    lastUpdateInfo = info;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update:available', info);
+    }
+  } catch (err) {
+    if (UPDATE_DEV) console.error('[cutline-update]', err);
+  }
 }
 
 function ffmpegPath() {
@@ -279,6 +308,10 @@ function buildMenu() {
       label: 'Help',
       submenu: [
         {
+          label: 'Check for Updates…',
+          click: () => sendMenu('check-updates'),
+        },
+        {
           label: 'About Cutline Studio',
           click: async () => {
             await dialog.showMessageBox(mainWindow, {
@@ -391,6 +424,49 @@ function ipcHandlers() {
     userData: app.getPath('userData'),
     projectPath: currentProjectPath,
   }));
+
+  ipcMain.handle('update:config', () => ({
+    feedUrl: updateFeedUrl(),
+    currentVersion: app.getVersion(),
+    packaged: app.isPackaged,
+    allowDev: !app.isPackaged && UPDATE_DEV,
+    platform: process.platform,
+  }));
+
+  ipcMain.handle('update:setFeed', async (_event, feedUrl) => {
+    if (typeof feedUrl !== 'string' || !/^https?:\/\//i.test(feedUrl.trim())) {
+      throw new Error('Enter a full http(s) update feed URL.');
+    }
+    await saveSettings({ updateFeedUrl: feedUrl.trim() });
+    lastUpdateInfo = null;
+    return { feedUrl: feedUrl.trim() };
+  });
+
+  ipcMain.handle('update:check', async (_event, feedOverride) => {
+    const feed = typeof feedOverride === 'string' && feedOverride.trim() ? feedOverride.trim() : updateFeedUrl();
+    if (!feed) throw new Error('No update feed configured.');
+    const info = await updater.check(feed, app.getVersion());
+    lastUpdateInfo = info;
+    return info;
+  });
+
+  ipcMain.handle('update:download', async (event) => {
+    if (!lastUpdateInfo) throw new Error('Check for an update first.');
+    const downloaded = await updater.download(lastUpdateInfo, (progress) => {
+      if (!event.sender.isDestroyed()) event.sender.send('update:progress', progress);
+    });
+    return { path: downloaded.path, size: downloaded.size, sha256: downloaded.sha256 };
+  });
+
+  ipcMain.handle('update:cancel', () => {
+    updater.cancel();
+    return { ok: true };
+  });
+
+  ipcMain.handle('update:install', async () => {
+    if (!lastUpdateInfo) throw new Error('No update is ready to install.');
+    return updater.install(lastUpdateInfo);
+  });
 
   ipcMain.handle('app:startup', async () => {
     const settings = loadSettings();
@@ -628,6 +704,7 @@ if (!gotLock) {
     ipcHandlers();
     buildMenu();
     createWindow();
+    if (app.isPackaged || UPDATE_DEV) setTimeout(() => void autoUpdateCheck(), 8000);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

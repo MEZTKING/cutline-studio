@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld('cutlineDesktop', {
   transcode: (payload) => ipcRenderer.invoke('export:transcode', payload),
   title: (title) => ipcRenderer.invoke('window:title', title),
   showItem: (file) => ipcRenderer.invoke('shell:showItem', file),
+  updateConfig: () => ipcRenderer.invoke('update:config'),
+  setUpdateFeed: (feedUrl) => ipcRenderer.invoke('update:setFeed', feedUrl),
+  checkUpdate: (feedUrl) => ipcRenderer.invoke('update:check', feedUrl),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  cancelUpdate: () => ipcRenderer.invoke('update:cancel'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
   onMenuCommand: (callback) => {
     const handler = (_event, command) => callback(command);
     ipcRenderer.on('menu-command', handler);
@@ -33,5 +39,15 @@ contextBridge.exposeInMainWorld('cutlineDesktop', {
     const handler = (_event, progress) => callback(progress);
     ipcRenderer.on('export:progress', handler);
     return () => ipcRenderer.removeListener('export:progress', handler);
+  },
+  onUpdateProgress: (callback) => {
+    const handler = (_event, progress) => callback(progress);
+    ipcRenderer.on('update:progress', handler);
+    return () => ipcRenderer.removeListener('update:progress', handler);
+  },
+  onUpdateAvailable: (callback) => {
+    const handler = (_event, info) => callback(info);
+    ipcRenderer.on('update:available', handler);
+    return () => ipcRenderer.removeListener('update:available', handler);
   },
 });

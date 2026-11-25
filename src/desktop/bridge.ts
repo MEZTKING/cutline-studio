@@ -51,7 +51,8 @@ export type DesktopMenuCommand =
   | 'export'
   | 'undo'
   | 'redo'
-  | 'project-settings';
+  | 'project-settings'
+  | 'check-updates';
 
 export interface NativeExportPayload {
   data: ArrayBuffer;
@@ -69,6 +70,33 @@ export interface NativeExportResult {
   size?: number;
   error?: string;
   canceled?: boolean;
+}
+
+export interface DesktopUpdateInfo {
+  version: string;
+  notes: string;
+  released: string | null;
+  size: number;
+  url: string;
+  sha256: string;
+  executable: string;
+  currentVersion: string;
+  platform: string;
+  feedUrl: string;
+}
+
+export interface DesktopUpdateDownload {
+  path: string;
+  size: number;
+  sha256: string;
+}
+
+export interface DesktopUpdateConfig {
+  feedUrl: string;
+  currentVersion: string;
+  packaged: boolean;
+  allowDev: boolean;
+  platform: string;
 }
 
 export interface CutlineDesktopApi {
@@ -89,8 +117,16 @@ export interface CutlineDesktopApi {
   transcode(payload: NativeExportPayload): Promise<NativeExportResult>;
   title(title: string): Promise<void>;
   showItem(path: string): Promise<void>;
+  updateConfig(): Promise<DesktopUpdateConfig>;
+  setUpdateFeed(feedUrl: string): Promise<{ feedUrl: string }>;
+  checkUpdate(feedUrl?: string): Promise<DesktopUpdateInfo | null>;
+  downloadUpdate(): Promise<DesktopUpdateDownload>;
+  cancelUpdate(): Promise<{ ok: boolean }>;
+  installUpdate(): Promise<{ ok: boolean; appDir: string }>;
   onMenuCommand(callback: (command: DesktopMenuCommand) => void): () => void;
   onExportProgress(callback: (progress: { percent: number; detail?: string }) => void): () => void;
+  onUpdateProgress(callback: (progress: { received: number; total: number; percent: number }) => void): () => void;
+  onUpdateAvailable(callback: (info: DesktopUpdateInfo) => void): () => void;
 }
 
 declare global {

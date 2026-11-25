@@ -24,6 +24,7 @@ import { Preview, Transport } from './Preview';
 import { Timeline } from './Timeline';
 import { Toast } from './Toast';
 import { TopBar } from './TopBar';
+import { UpdatesDialog } from './UpdatesDialog';
 
 function useIsMobile(): boolean {
   const query = '(max-width: 980px)';
@@ -393,9 +394,20 @@ export function App() {
         case 'redo':
           state.redo();
           break;
+        case 'check-updates':
+          state.setUpdateOpen(true);
+          break;
         default:
           break;
       }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || !desktop) return;
+    return desktop.onUpdateAvailable((info) => {
+      useEditor.getState().setUpdateAvailable(info);
+      useEditor.getState().notify(`Update ${info.version} available`, 'info');
     });
   }, []);
 
@@ -595,6 +607,7 @@ export function App() {
         </div>
       )}
 
+      <UpdatesDialog />
       <ExportDialog />
       <CaptionsDialog />
       <AutoReframeDialog />

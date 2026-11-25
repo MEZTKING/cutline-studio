@@ -2,7 +2,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.6.0 — two builds from one engine, with a DaVinci-style colour page and a proper audio mixer.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.7.0 — two builds from one engine, with a DaVinci-style colour page, an audio mixer, and an in-app updater.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -28,10 +28,24 @@ small IPC bridge. The web build remains zero-install and unchanged.
 | --- | --- | --- |
 | **Edit** | Multi-track timeline, trim/split/ripple delete, snapping, keyframes, undo | Roll / slip / slide, J/L cuts, multi-select, insert/overwrite, multicam, nested sequences |
 | **Color** | GPU primary grade, lift/gamma/gain wheels, 3D LUTs, live scopes, bypass | Curves, HSL qualifier, power windows, node graph, keyframed grades, HDR |
-| **Audio** | Clip gain, fades, transition crossfades, offline mixdown | EQ, compressor, buses, ducking, 5.1, waveform repair |
+| **Audio** | dB gain, pan, 3-band EQ, compressor, normalize, fades, presets, solo/mute | Buses, ducking, 5.1, denoise |
 | **Effects** | Ten transitions, auto-reframe, titles, captions | Keying, masks, motion tracking, Fusion-style node effects |
 | **Media** | Disk streaming, `.cutline` projects, autosave | Proxies, bundles/relink, background workers, media library |
+| **Updates** | Auto-check, SHA-256 verified download, portable self-replace | Code-signed NSIS updater, delta downloads |
 | **Delivery** | WebCodecs + FFmpeg H.264/HEVC/ProRes masters | Render queue, presets, watch folders, background export |
+
+### App updates
+
+- **Help → Check for Updates…** and a silent check 8 seconds after launch (desktop, packaged builds).
+- Shows the new version, release notes, and size; downloads with a progress bar.
+- Verifies the download against the **SHA-256** in the update feed before installing.
+- **Restart & install**: the helper waits for the app to close, replaces the portable app
+  folder, and relaunches the new build. The previous folder is kept until the swap succeeds.
+- Feed URL is editable in the dialog (default in `desktop/update-config.json`);
+  downloads run in the main process, not the renderer.
+- The first updater-equipped build is **0.7.0** — older builds need one manual download.
+
+![App updater](docs/screens/desktop-update.png)
 
 This is the honest shape of "DaVinci + Premiere": each pillar needs real engineering. The app is
 built so pillars can land independently on the same project model and renderer.
@@ -308,6 +322,7 @@ written to `test-results/`.
 ```bash
 npm test          # SRT + framing math, smoke, features, mobile, captions, auto-reframe
 DISPLAY=:99 npm run test:color   # GPU colour page (needs a display + Mesa/SwiftShader)
+DISPLAY=:99 npm run test:updater # auto-check, dialog, verified download (Electron)
 ```
 
 The web suites need Playwright Chromium; set `CHROME_PATH` to override the executable.

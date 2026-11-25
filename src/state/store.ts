@@ -1,3 +1,4 @@
+import type { DesktopUpdateInfo } from '../desktop/bridge';
 import { create } from 'zustand';
 import {
   addTrack as addTrackModel,
@@ -36,6 +37,8 @@ interface EditorState {
   workspace: 'edit' | 'color';
   colorBypass: boolean;
   fineScrub: boolean;
+  updateOpen: boolean;
+  updateAvailable: DesktopUpdateInfo | null;
   assetOrder: string[];
   playhead: number;
   playing: boolean;
@@ -55,6 +58,8 @@ interface EditorState {
   setWorkspace: (workspace: 'edit' | 'color') => void;
   setColorBypass: (bypass: boolean) => void;
   setFineScrub: (fine: boolean) => void;
+  setUpdateOpen: (open: boolean) => void;
+  setUpdateAvailable: (info: DesktopUpdateInfo | null) => void;
   addLut: (lut: ProjectLut) => string;
   removeLut: (id: string) => void;
 
@@ -149,6 +154,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   workspace: 'edit',
   colorBypass: false,
   fineScrub: false,
+  updateOpen: false,
+  updateAvailable: null,
   assetOrder: [],
   playhead: 0,
   playing: false,
@@ -248,6 +255,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   setWorkspace: (workspace) => set({ workspace }),
   setColorBypass: (bypass) => set({ colorBypass: bypass }),
   setFineScrub: (fine) => set({ fineScrub: fine }),
+  setUpdateOpen: (open) => set({ updateOpen: open }),
+  setUpdateAvailable: (info) => set({ updateAvailable: info }),
 
   addLut: (lut) => {
     const id = uid('lut');

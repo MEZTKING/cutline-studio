@@ -17,6 +17,7 @@ export function TopBar({
   const canRedo = useEditor((s) => s.future.length > 0);
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
+  const updateAvailable = useEditor((s) => s.updateAvailable);
   const [name, setName] = useState(project.name);
   const lastProject = useRef(project.name);
 
@@ -80,6 +81,17 @@ export function TopBar({
         <Icon name="upload" size={15} />
         <span className="label">Import</span>
       </button>
+
+      {updateAvailable && (
+        <button
+          className="btn ghost update-pill"
+          title={`Update ${updateAvailable.version} is available`}
+          onClick={() => useEditor.getState().setUpdateOpen(true)}
+        >
+          <Icon name="download" size={14} />
+          <span className="label">v{updateAvailable.version}</span>
+        </button>
+      )}
 
       {onSave && <span className="pill accent" title="Desktop heavy build">HEAVY</span>}
 
