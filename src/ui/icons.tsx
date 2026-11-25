@@ -44,6 +44,7 @@ const P = {
   text: <><path d="M4 6V4h16v2M12 4v16M8 20h8" /></>,
   captions: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M10 9.6a2.5 2.5 0 100 4.8M17 9.6a2.5 2.5 0 100 4.8" /></>,
   reframe: <><path d="M6 2v16h16" /><path d="M2 6h16v16" /></>,
+  save: <><path d="M5 3h11l3 3v15H5z" /><path d="M8 3v6h8V3" /><path d="M8 15h8v6H8z" /></>,
 };
 
 export type IconName = keyof typeof P;

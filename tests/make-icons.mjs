@@ -1,0 +1,22 @@
+import { chromium } from 'playwright-core';
+import fs from 'node:fs';
+import pngToIco from 'png-to-ico';
+
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || chromium.executablePath(), args: ['--no-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 512, height: 512 }, deviceScaleFactor: 1 });
+await page.setContent(`<!doctype html><style>html,body{margin:0;background:transparent}img{display:block;width:512px;height:512px}</style><img src="http://127.0.0.1:5173/icon.svg">`);
+await page.waitForFunction(() => document.querySelector('img').complete);
+await page.waitForTimeout(300);
+fs.mkdirSync('build', { recursive: true });
+await page.screenshot({ path: 'build/icon.png', omitBackground: true });
+await page.close();
+const page2 = await browser.newPage({ viewport: { width: 256, height: 256 }, deviceScaleFactor: 1 });
+await page2.setContent(`<!doctype html><style>html,body{margin:0;background:transparent}img{display:block;width:256px;height:256px}</style><img src="http://127.0.0.1:5173/icon.svg">`);
+await page2.waitForFunction(() => document.querySelector('img').complete);
+await page2.waitForTimeout(300);
+const png256 = await page2.screenshot({ omitBackground: true });
+fs.writeFileSync('build/icon-256.png', png256);
+const ico = await pngToIco(png256);
+fs.writeFileSync('build/icon.ico', ico);
+await browser.close();
+console.log('icons', fs.statSync('build/icon.png').size, fs.statSync('build/icon.ico').size);

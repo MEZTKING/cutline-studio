@@ -3,7 +3,14 @@ import { projectDuration } from '../core/model';
 import { getAudioEngine } from '../audio/engine';
 import { preferredTrack } from '../core/placement';
 import type { MediaAsset } from '../core/types';
-import { importFile } from '../media/import';
+import { importFile, importNative } from '../media/import';
+import {
+  desktop,
+  hydrateDesktopProject,
+  isDesktop,
+  serializeProjectForDesktop,
+  type DesktopMediaEntry,
+} from '../desktop/bridge';
 import { loadWorkspace, saveWorkspace } from '../persistence/db';
 import { useEditor } from '../state/store';
 import { AutoReframeDialog } from './AutoReframeDialog';
@@ -58,8 +65,29 @@ export function App() {
 
   useEffect(() => {
     let alive = true;
-    loadWorkspace()
-      .then((ws) => {
+
+    const boot = async () => {
+      if (isDesktop && desktop) {
+        try {
+          const start = await desktop.startup();
+          if (!alive) return;
+          if (start.data?.project) {
+            const hydrated = await hydrateDesktopProject(start.data);
+            if (!alive) return;
+            useEditor.getState().loadWorkspace(hydrated.project, hydrated.assets);
+            const label = start.source === 'autosave' ? 'Recovered your autosave' : `Opened ${start.path?.split(/[\\/]/).pop() ?? 'project'}`;
+            window.setTimeout(() => useEditor.getState().notify(label, 'success'), 500);
+          }
+        } catch (err) {
+          useEditor.getState().notify(`Desktop project could not be restored: ${err instanceof Error ? err.message : String(err)}`, 'error');
+        } finally {
+          if (alive) setBooted(true);
+        }
+        return;
+      }
+
+      try {
+        const ws = await loadWorkspace();
         if (!alive) return;
         if (ws && ws.project) {
           useEditor.getState().loadWorkspace(ws.project, ws.assets);
@@ -69,10 +97,12 @@ export function App() {
             }, 500);
           }
         }
-      })
-      .finally(() => {
+      } finally {
         if (alive) setBooted(true);
-      });
+      }
+    };
+
+    void boot();
     return () => {
       alive = false;
     };
@@ -83,6 +113,10 @@ export function App() {
     let timer = 0;
     const persist = () => {
       const s = useEditor.getState();
+      if (isDesktop && desktop) {
+        void desktop.autosave(serializeProjectForDesktop(s.project, s.assets));
+        return;
+      }
       const list = s.assetOrder.map((id) => s.assets[id]).filter(Boolean);
       void saveWorkspace(s.project, list);
     };
@@ -248,7 +282,133 @@ export function App() {
     }
   };
 
-  const openPicker = () => fileInput.current?.click();
+  async function importNativeEntries(entries: DesktopMediaEntry[]) {
+    if (!entries.length) return;
+    const state = useEditor.getState();
+    if (state.playing) state.setPlaying(false);
+    setBusy((b) => b + 1);
+    state.notify(`Importing ${entries.length} file${entries.length === 1 ? '' : 's'} from disk…`);
+    const imported: MediaAsset[] = [];
+    const errors: string[] = [];
+    for (const entry of entries) {
+      try {
+        imported.push(await importNative(entry));
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : String(err));
+      }
+    }
+    if (imported.length) {
+      useEditor.getState().addAssets(imported);
+      placeImported(imported);
+    }
+    setBusy((b) => Math.max(0, b - 1));
+    if (errors.length) useEditor.getState().notify(errors[0], 'error');
+    else if (imported.length) useEditor.getState().notify(`Imported ${imported.length} file${imported.length === 1 ? '' : 's'}`, 'success');
+  }
+
+  async function pickDesktopMedia() {
+    if (!desktop) return;
+    const entries = await desktop.pickMedia();
+    await importNativeEntries(entries);
+  }
+
+  async function saveDesktop(saveAs = false) {
+    if (!desktop) return;
+    const state = useEditor.getState();
+    const data = serializeProjectForDesktop(state.project, state.assets);
+    const result = await desktop.saveProject(data, { saveAs });
+    if (!result) return;
+    if ('error' in result) {
+      state.notify(result.error, 'error');
+      return;
+    }
+    state.notify(`Saved to ${result.path}`, 'success');
+    void desktop.title(state.project.name);
+  }
+
+  async function openDesktopProject(filePath?: string) {
+    if (!desktop) return;
+    const result = filePath ? await desktop.openProjectPath(filePath) : await desktop.openProject();
+    if (!result) return;
+    if ('error' in result) {
+      useEditor.getState().notify(result.error, 'error');
+      return;
+    }
+    const hydrated = await hydrateDesktopProject(result.data);
+    useEditor.getState().loadWorkspace(hydrated.project, hydrated.assets);
+    useEditor.getState().notify(`Opened ${hydrated.project.name}`, 'success');
+    void desktop.title(hydrated.project.name);
+  }
+
+  const openPicker = () => {
+    if (isDesktop && desktop) {
+      void pickDesktopMedia();
+      return;
+    }
+    fileInput.current?.click();
+  };
+
+  useEffect(() => {
+    if (!isDesktop || !desktop) return;
+    return desktop.onMenuCommand((command) => {
+      const state = useEditor.getState();
+      switch (command) {
+        case 'new-project':
+          if (confirm('Start a new project? The current timeline clears; media stays in the bin.')) {
+            state.resetProject();
+            state.setPlayhead(0);
+            void desktop?.newProject();
+          }
+          break;
+        case 'open-project':
+          void openDesktopProject();
+          break;
+        case 'save-project':
+          void saveDesktop(false);
+          break;
+        case 'save-project-as':
+          void saveDesktop(true);
+          break;
+        case 'import-media':
+          void pickDesktopMedia();
+          break;
+        case 'export':
+          state.setExportOpen(true);
+          break;
+        case 'undo':
+          state.undo();
+          break;
+        case 'redo':
+          state.redo();
+          break;
+        default:
+          break;
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || !desktop) return;
+    const api = {
+      importPaths: async (paths: string[]) => {
+        const entries = await desktop!.registerMedia(paths);
+        await importNativeEntries(entries);
+        return entries;
+      },
+      saveTo: async (target: string) => {
+        const state = useEditor.getState();
+        return desktop!.saveProjectTo(serializeProjectForDesktop(state.project, state.assets), target);
+      },
+      openPath: async (target: string) => {
+        await openDesktopProject(target);
+      },
+      getProject: () => useEditor.getState().project,
+    };
+    (window as unknown as { __cutlineDesktop: typeof api }).__cutlineDesktop = api;
+    return () => {
+      delete (window as unknown as { __cutlineDesktop?: typeof api }).__cutlineDesktop;
+    };
+  }, []);
 
   const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes('Files');
 
@@ -293,10 +453,21 @@ export function App() {
         e.preventDefault();
         dragDepth.current = 0;
         setDragOver(false);
-        void importFiles(Array.from(e.dataTransfer.files));
+        const files = Array.from(e.dataTransfer.files);
+        if (isDesktop && desktop) {
+          const paths = files.map((file) => desktop!.pathForFile(file)).filter(Boolean);
+          if (paths.length === files.length) {
+            void (async () => {
+              const entries = await desktop!.registerMedia(paths);
+              await importNativeEntries(entries);
+            })();
+            return;
+          }
+        }
+        void importFiles(files);
       }}
     >
-      <TopBar onImport={openPicker} onExport={() => setExportOpen(true)} />
+      <TopBar onImport={openPicker} onExport={() => setExportOpen(true)} onSave={isDesktop ? () => void saveDesktop(false) : undefined} />
 
       <div className="workspace">
         {!isMobile && (

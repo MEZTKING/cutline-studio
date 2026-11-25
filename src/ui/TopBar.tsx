@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor } from '../state/store';
+import { desktop, isDesktop } from '../desktop/bridge';
 import { Icon } from './icons';
 
-export function TopBar({ onImport, onExport }: { onImport: () => void; onExport: () => void }) {
+export function TopBar({
+  onImport,
+  onExport,
+  onSave,
+}: {
+  onImport: () => void;
+  onExport: () => void;
+  onSave?: () => void;
+}) {
   const project = useEditor((s) => s.project);
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
@@ -10,6 +19,10 @@ export function TopBar({ onImport, onExport }: { onImport: () => void; onExport:
   const redo = useEditor((s) => s.redo);
   const [name, setName] = useState(project.name);
   const lastProject = useRef(project.name);
+
+  useEffect(() => {
+    if (isDesktop && desktop) void desktop.title(project.name);
+  }, [project.name]);
 
   useEffect(() => {
     if (project.name !== lastProject.current) {
@@ -56,10 +69,19 @@ export function TopBar({ onImport, onExport }: { onImport: () => void; onExport:
         </button>
       </div>
 
+      {onSave && (
+        <button className="btn" onClick={onSave} title="Save project (Ctrl+S)">
+          <Icon name="save" size={15} />
+          <span className="label">Save</span>
+        </button>
+      )}
+
       <button className="btn" onClick={onImport} title="Import media">
         <Icon name="upload" size={15} />
         <span className="label">Import</span>
       </button>
+
+      {onSave && <span className="pill accent" title="Desktop heavy build">HEAVY</span>}
 
       <button className="btn primary" onClick={onExport} title="Export video">
         <Icon name="download" size={15} />

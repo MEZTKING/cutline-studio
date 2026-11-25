@@ -15,6 +15,8 @@ export interface MediaAsset {
   height: number;
   hasAudio: boolean;
   url: string;
+  /** Absolute path when running inside the desktop shell. */
+  path?: string;
   file?: File | Blob;
   thumbnail?: string;
   /** Decoded audio, kept in memory only. */

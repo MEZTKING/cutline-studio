@@ -2,11 +2,27 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.3 — working MVP with on-device auto-captions and face-following auto-reframe.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.4 — two builds from one engine: a light browser/PWA editor and a heavy Electron desktop app.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
 ---
+
+## Two builds, one engine
+
+| | **Cutline Light** | **Cutline Heavy (desktop)** |
+| --- | --- | --- |
+| Runs on | Phone, tablet, any browser, installed PWA | Windows / macOS / Linux desktop |
+| Media | Picked into browser memory | **Streamed from disk** with range seeking |
+| Projects | One autosaved workspace (IndexedDB) | **`.cutline` files**, last project reopens, crash autosave |
+| Export | WebCodecs (MP4 when supported, else WebM) | WebCodecs render **+ FFmpeg masters**: H.264, HEVC, ProRes |
+| Footprint | 42 MB lazy-loaded bundle | ~420 MB installed (Electron + FFmpeg) |
+| Best for | Capture-to-post on a phone, quick edits | Long footage, guaranteed codecs, delivery masters |
+
+The desktop app is additive: it loads the same UI and editor, then adds native capabilities through a
+small IPC bridge. The web build remains zero-install and unchanged.
+
+![Cutline Heavy](docs/screens/desktop-heavy.png)
 
 ## Quick start
 
@@ -21,6 +37,40 @@ npm run preview      # http://localhost:5173
 Open that URL on the same machine, or on a phone connected to the same network
 (`http://<computer-ip>:5173`). On Android Chrome you can use **Add to Home screen** —
 the production build registers a service worker and runs offline.
+
+### Heavy desktop build
+
+```bash
+npm install
+npm run desktop:start        # builds the web bundle, opens the Electron app
+```
+
+Or package it:
+
+```bash
+npm run desktop:build        # unpacked app for the current OS (release/)
+npm run desktop:dist:win     # Windows NSIS installer (run on Windows)
+npm run desktop:dist:linux   # Linux AppImage (run on Linux)
+```
+
+On Windows, the GitHub Actions workflow in `.github/workflows/windows-build.yml` builds the
+installer and uploads it as an artifact. The installer is unsigned, so SmartScreen will warn
+unless you sign it.
+
+Desktop-only behaviour:
+- **File → Import Media** streams files from disk; nothing is copied into the app.
+- **File → Save / Save As** writes a `.cutline` JSON project that references the source files
+  by absolute path. **File → Open** and launch restore reopen it; autosave lives in the app
+  data folder and recovers after a crash.
+- **Export → Desktop master with FFmpeg** renders in the browser, then writes H.264, HEVC, or
+  ProRes with a native save dialog. `Show in folder` reveals the result.
+- Native menus, `Ctrl+S` / `Ctrl+O` / `Ctrl+I`, and a window title follow the project.
+
+Heavy v1 caveats: the master is a **transcode of the browser render**, not a frame-accurate
+native pipeline (generation loss is possible). Projects reference source paths rather than
+bundling media, so moving a project requires the media to stay in place. Proxies, a render
+queue, and multicam are not in this build yet. FFmpeg's GPL build (x264/x265) has distribution
+implications — see *Third-party assets*.
 
 Everything stays in the browser: media is read with object URLs, audio is decoded with
 Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
@@ -83,6 +133,8 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 | --- | --- |
 | ![Desktop editing](docs/screens/desktop-editing.png) | ![Mobile editing](docs/screens/mobile-editing.png) |
 
+![Heavy desktop export](docs/screens/desktop-heavy-export.png)
+
 ![Captions](docs/screens/desktop-captions.png)
 
 ![Phone captions](docs/screens/mobile-captions.png)
@@ -119,12 +171,19 @@ Web Audio, and the project autosaves to IndexedDB. Nothing is uploaded.
 src/
   core/        types, pure project model, placement helpers
   state/       zustand store: projects, selection, history, gestures
-  media/       import, metadata + duration probing, thumbnails, audio decode, peaks
+  media/       web + native import, metadata probing, thumbnails, audio, peaks
   render/      Canvas2D compositor (transforms, grade, transitions, titles)
   audio/       Web Audio playback clock, scheduling, offline mixdown
   export/      WebCodecs video/audio encoders + mp4-muxer / webm-muxer
-  persistence/ IndexedDB autosave
-  ui/          React app shell, timeline, preview, inspector, export dialog
+  captions/    Whisper ASR wrapper, SRT parser/formatter
+  reframe/     BlazeFace wrapper, framing math, keyframe planning
+  desktop/     renderer bridge + project serialization for the heavy shell
+  persistence/ IndexedDB autosave (web)
+  ui/          React app shell, timeline, preview, inspector, dialogs
+
+desktop/
+  main.cjs     Electron main: app/menus, cutline:// protocols, project + FFmpeg IPC
+  preload.cjs  context-isolated native bridge
 ```
 
 Key ideas:
@@ -141,6 +200,10 @@ Key ideas:
    and commit one history entry on release, so undo behaves the way editors expect.
 5. **Honest fallbacks.** No WebCodecs → the export dialog explains it instead of failing silently.
    No AAC → WebM. No duration metadata in a WebM → probe by seeking to the end.
+6. **One renderer, two shells.** The Electron shell serves the same built UI over a secure
+   `cutline://` protocol. Disk media streams over `cutline-media://` with HTTP range support,
+   so a multi-GB source never has to be copied into the renderer. Native IPC handles project
+   files, autosave, audio extraction, and FFmpeg masters.
 
 ### Verification
 
@@ -150,7 +213,7 @@ transition, exports, decodes the exported file's video/audio, reloads to test au
 and checks the mobile layout. `node tests/features.mjs` covers titles, decimal inputs,
 duplicate/undo, and persistence.
 
-Latest run against the production build: **all checks passing** — end-to-end smoke
+Latest runs: **all web suites passing** — end-to-end smoke
 (import → edit → transition → export → decode → offline reload), on-device caption
 generation from real speech, SRT round-trip, auto-reframe with a moving face, titles and
 decimal inputs, export cancel-and-retry, and mobile/landscape layout. Reports are written
@@ -160,7 +223,17 @@ to `test-results/`.
 npm test   # SRT + framing math, smoke, features, mobile, captions, auto-reframe
 ```
 
-The suites need Playwright Chromium; set `CHROME_PATH` to override the executable.
+The web suites need Playwright Chromium; set `CHROME_PATH` to override the executable.
+
+The desktop shell has its own end-to-end tests (run under Xvfb or a desktop session):
+
+```bash
+DISPLAY=:99 npm run test:desktop          # imports, range seek, save/reopen, FFmpeg master, relaunch
+DISPLAY=:99 npm run test:desktop:autosave # crash autosave recovery
+DISPLAY=:99 npm run test:desktop:packaged # packaged app + bundled FFmpeg
+```
+
+Reports land in `test-results/desktop-*.json`.
 
 ---
 
@@ -168,6 +241,8 @@ The suites need Playwright Chromium; set `CHROME_PATH` to override the executabl
 
 - **Not parity yet.** No GPU pipeline, no LUTs, no masks/tracking, no multicam,
   no proxy media, no collaboration, no HDR/colour management.
+- Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
+  media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
 - Preview is capped at 1280 px internally; export still renders at full target resolution.
 - Transitions require the clips to be adjacent on the same track; audio uses source
   handles, so a transition may shorten to the available audio.
@@ -193,6 +268,7 @@ The suites need Playwright Chromium; set `CHROME_PATH` to override the executabl
 - GPU compositor (WebGL2/WebGPU) for blend modes, LUTs, masks, and 60 fps 4K preview.
 - Proxy generation + background thumbnail/waveform workers.
 - Per-clip crop rectangle, speed curves, freeze frames, reverse.
+- Desktop: native frame pipeline, proxies, render queue, project bundles with relinking.
 
 **P1 — CapCut-level ease**
 - Caption translation, multilingual Whisper models, speaker labels, caption templates.
@@ -207,28 +283,37 @@ The suites need Playwright Chromium; set `CHROME_PATH` to override the executabl
 - Team projects, review links, comments, version history.
 
 **Packaging**
-- The same codebase can be wrapped for Windows/macOS with Tauri (preferred: smaller,
-  native FFmpeg available) or Electron. The browser version remains the source of truth;
-  a native shell adds real FFmpeg encode/decode, filesystem project files, and native
-  GPU access. This has **not** been built or verified in this environment (no Rust/FFmpeg
-  toolchain here) — it is the next milestone, not a current feature.
+- **Shipped:** an Electron heavy shell (`desktop/`) with secure custom protocols, native
+  project files, disk streaming, FFmpeg masters, menus, and autosave. It is verified running
+  from source and as a packaged Linux app in this environment.
+- **Windows:** `electron-builder` NSIS configuration and a `windows-latest` GitHub Actions
+  workflow are included. The installer is **unsigned**; SmartScreen will warn. A Windows
+  binary cannot be built or executed in this Android/Linux container — the first real Windows
+  run will be the CI artifact or a local Windows build.
+- **Long-term:** Tauri remains an option for a much smaller shell with the same UI and a Rust
+  native backend. The renderer, project model, and FFmpeg bridge are shell-agnostic.
 
 ---
 
-## Why browser-first
+## Why two builds
 
 Running Windows on an Android phone through emulation is not viable for video editing:
-no GPU video path, no reliable codec support, and unusable performance. The browser is
-the pragmatic common denominator — it runs on the phone today, installs as a PWA, and
-the identical UI can be wrapped as a Windows desktop app later without a rewrite.
+no GPU video path, no reliable codec support, and unusable performance. So the light build
+stays in the browser: it runs on the phone today, installs as a PWA, and needs no install.
+The heavy build exists where heavy work belongs — a desktop machine with real disk I/O,
+guaranteed codecs, and FFmpeg. One engine, two shells; edits move through `.cutline`
+projects (paths/relinking bundles are the next milestone).
 
 ---
 
-Built with React 19, TypeScript, Vite, zustand, `mp4-muxer`, and `webm-muxer`.
-No analytics, no telemetry, no network calls at runtime.
+Built with React 19, TypeScript, Vite, zustand, Electron, FFmpeg, `mp4-muxer`, `webm-muxer`,
+transformers.js (Whisper), and MediaPipe (BlazeFace). No analytics, no telemetry, no network
+calls at runtime beyond the one-time Whisper model download.
 
 ### Third-party assets
 
+- **FFmpeg static** (GPL build with x264/x265, bundled as a desktop resource). For commercial
+  distribution, use an LGPL FFmpeg build or system FFmpeg and review licensing.
 - **MediaPipe BlazeFace** face detector (`public/models/face_detector.tflite`, Apache-2.0)
   and the MediaPipe vision WASM runtime (Apache-2.0), synced from `node_modules` into
   `public/vendor/` by `scripts/sync-mediapipe.mjs`.

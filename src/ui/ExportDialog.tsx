@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { projectDuration } from '../core/model';
 import { exportProject, getExportCapabilities, webCodecsAvailable, type ExportFormat, type ExportProgress, type ExportQuality, type ExportResult } from '../export/exporter';
 import { useEditor } from '../state/store';
+import { desktop, isDesktop } from '../desktop/bridge';
 import { Icon } from './icons';
 
 const FPS_OPTIONS = [24, 25, 30, 50, 60];
@@ -41,6 +42,11 @@ export function ExportDialog() {
   const [result, setResult] = useState<ExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [caps, setCaps] = useState<{ mp4: boolean; webm: boolean; webcodecs: boolean } | null>(null);
+  const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean | null>(null);
+  const [nativeMaster, setNativeMaster] = useState(false);
+  const [codec, setCodec] = useState<'h264' | 'hevc' | 'prores'>('h264');
+  const [nativeResult, setNativeResult] = useState<{ path: string; size: number } | null>(null);
+  const [mastering, setMastering] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
@@ -52,11 +58,22 @@ export function ExportDialog() {
     setFileName(project.name);
     setStatus('idle');
     setResult(null);
+    setNativeResult(null);
+    setMastering(false);
     setError(null);
     setProgress({ phase: 'Ready', percent: 0 });
     const hasAudio = Object.values(assets).some((a) => a.kind === 'audio' || (a.kind === 'video' && a.hasAudio));
     setIncludeAudio(hasAudio);
     void getExportCapabilities().then(setCaps);
+    if (isDesktop && desktop) {
+      void desktop.info().then((info) => {
+        setFfmpegAvailable(Boolean(info.ffmpeg));
+        setNativeMaster(Boolean(info.ffmpeg));
+      }).catch(() => setFfmpegAvailable(false));
+    } else {
+      setFfmpegAvailable(null);
+      setNativeMaster(false);
+    }
   }, [open, project.width, project.height, project.fps, project.name, assets]);
 
   const duration = projectDuration(project);
@@ -92,9 +109,12 @@ export function ExportDialog() {
     state.setPlaying(false);
     const controller = new AbortController();
     abortRef.current = controller;
+    const useNative = isDesktop && nativeMaster && Boolean(ffmpegAvailable) && Boolean(desktop);
     setStatus('running');
     setError(null);
     setResult(null);
+    setNativeResult(null);
+    setMastering(false);
     setProgress({ phase: 'Preparing', percent: 0 });
     try {
       const out = await exportProject(
@@ -109,12 +129,45 @@ export function ExportDialog() {
           includeAudio: includeAudio && hasAudioClips,
           fileName,
         },
-        (p) => setProgress(p),
+        (p) => setProgress({ phase: p.phase, percent: p.percent * (useNative ? 0.7 : 1) }),
         controller.signal,
       );
-      setResult(out);
+
+      if (useNative && desktop) {
+        setMastering(true);
+        setProgress({ phase: 'Encoding master with FFmpeg…', percent: 71 });
+        const unsubscribe = desktop.onExportProgress((p) => {
+          setProgress({ phase: p.detail ?? 'Encoding master…', percent: 72 + Math.min(1, p.percent / 100) * 27 });
+        });
+        try {
+          const res = await desktop.transcode({
+            data: await out.blob.arrayBuffer(),
+            inputExtension: out.extension,
+            suggestedName: `${fileName || project.name}.${out.extension}`,
+            codec,
+            quality,
+            durationSeconds: out.durationSeconds,
+          });
+          if (!res.ok) {
+            if (res.canceled) {
+              setStatus('idle');
+              setProgress({ phase: 'Cancelled', percent: 0 });
+              return;
+            }
+            throw new Error(res.error || 'FFmpeg could not encode the master.');
+          }
+          setResult(out);
+          setNativeResult({ path: res.path!, size: res.size! });
+        } finally {
+          unsubscribe();
+          setMastering(false);
+        }
+      } else {
+        setResult(out);
+        triggerDownload(out);
+      }
+
       setStatus('done');
-      triggerDownload(out);
       requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -231,6 +284,46 @@ export function ExportDialog() {
             </div>
           </div>
 
+          {isDesktop && (
+            <div className="export-band" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
+              <label className="toggle-row" style={{ alignItems: 'flex-start', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={nativeMaster}
+                  disabled={!ffmpegAvailable || status === 'running'}
+                  onChange={(e) => setNativeMaster(e.target.checked)}
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  <b>Desktop master with FFmpeg</b>
+                  <br />
+                  <span style={{ color: 'var(--text-3)', fontSize: 10 }}>
+                    Adds H.264, HEVC, and ProRes delivery masters, encoded on disk.
+                  </span>
+                </span>
+              </label>
+              {nativeMaster && (
+                <div className="field">
+                  <label>Master codec</label>
+                  <select value={codec} disabled={status === 'running'} onChange={(e) => setCodec(e.target.value as 'h264' | 'hevc' | 'prores')}>
+                    <option value="h264">H.264 MP4 · maximum compatibility</option>
+                    <option value="hevc">HEVC MP4 · smaller high-quality files</option>
+                    <option value="prores">ProRes 422 MOV · edit-ready master</option>
+                  </select>
+                </div>
+              )}
+              {ffmpegAvailable === false && (
+                <div className="hint warn">FFmpeg was not found in this desktop install.</div>
+              )}
+              {nativeMaster && (
+                <div className="hint">
+                  The browser renders at {width}×{height}, then FFmpeg writes the final master with a save dialog. This
+                  is a delivery transcode, not a frame-accurate native render.
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="field">
             <label>File name</label>
             <input type="text" value={fileName} disabled={status === 'running'} onChange={(e) => setFileName(e.target.value)} />
@@ -279,9 +372,13 @@ export function ExportDialog() {
                 <Icon name="check" size={16} />
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="result-name">{result.filename}</div>
+                <div className="result-name">
+                  {nativeResult ? nativeResult.path.split(/[\\/]/).pop() : result.filename}
+                </div>
                 <div className="result-sub">
-                  {fileSize(result.blob.size)} · {result.durationSeconds.toFixed(1)}s · saved to Downloads
+                  {nativeResult
+                    ? `${fileSize(nativeResult.size)} · ${result.durationSeconds.toFixed(1)}s · master saved`
+                    : `${fileSize(result.blob.size)} · ${result.durationSeconds.toFixed(1)}s · saved to Downloads`}
                 </div>
               </div>
             </div>
@@ -294,15 +391,19 @@ export function ExportDialog() {
 
         <div className="modal-foot">
           {status === 'running' ? (
-            <button className="btn danger" onClick={() => abortRef.current?.abort()}>
-              Cancel export
-            </button>
+            mastering ? (
+              <span className="hint">Encoding master with FFmpeg…</span>
+            ) : (
+              <button className="btn danger" onClick={() => abortRef.current?.abort()}>
+                Cancel export
+              </button>
+            )
           ) : (
             <>
               <button className="btn" onClick={close}>
                 Close
               </button>
-              {status === 'done' && result && (
+              {status === 'done' && result && !nativeResult && (
                 <>
                   <button className="btn" onClick={() => triggerDownload(result)}>
                     <Icon name="download" size={14} /> Download again
@@ -312,12 +413,17 @@ export function ExportDialog() {
                   </button>
                 </>
               )}
+              {status === 'done' && nativeResult && (
+                <button className="btn" onClick={() => void desktop?.showItem(nativeResult.path)}>
+                  <Icon name="film" size={14} /> Show in folder
+                </button>
+              )}
             </>
           )}
           <span style={{ flex: 1 }} />
           {status !== 'running' && (
             <button className="btn primary" disabled={!canExport} onClick={() => void start()}>
-              <Icon name="download" size={14} /> Export
+              <Icon name="download" size={14} /> {nativeMaster ? 'Export master' : 'Export'}
             </button>
           )}
         </div>

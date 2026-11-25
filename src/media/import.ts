@@ -1,5 +1,6 @@
 import { uid } from '../core/model';
 import type { MediaAsset, MediaKind } from '../core/types';
+import { desktop } from '../desktop/bridge';
 
 let audioCtx: AudioContext | null = null;
 
@@ -11,16 +12,20 @@ export function getAudioContext(): AudioContext {
   return audioCtx;
 }
 
-export function classify(file: File): MediaKind | null {
-  const type = file.type.toLowerCase();
-  const name = file.name.toLowerCase();
+export function classifyName(name: string, mime = ''): MediaKind | null {
+  const type = mime.toLowerCase();
+  const lower = name.toLowerCase();
   if (type.startsWith('video/')) return 'video';
   if (type.startsWith('audio/')) return 'audio';
   if (type.startsWith('image/')) return 'image';
-  if (/\.(mp4|m4v|mov|webm|mkv|avi|ogv)$/.test(name)) return 'video';
-  if (/\.(mp3|m4a|aac|wav|ogg|opus|flac)$/.test(name)) return 'audio';
-  if (/\.(png|jpe?g|webp|gif|avif|bmp)$/.test(name)) return 'image';
+  if (/\.(mp4|m4v|mov|webm|mkv|avi|ogv)$/.test(lower)) return 'video';
+  if (/\.(mp3|m4a|aac|wav|ogg|opus|flac)$/.test(lower)) return 'audio';
+  if (/\.(png|jpe?g|webp|gif|avif|bmp)$/.test(lower)) return 'image';
   return null;
+}
+
+export function classify(file: File): MediaKind | null {
+  return classifyName(file.name, file.type);
 }
 
 function waitEvent(el: HTMLMediaElement, event: string, timeoutMs = 15000): Promise<void> {
@@ -150,6 +155,7 @@ function imageThumbnail(img: HTMLImageElement, width = 480): string {
 export function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error('Image failed to load'));
     img.src = src;
@@ -166,38 +172,80 @@ async function decodeAudioFromBlob(blob: Blob): Promise<AudioBuffer | null> {
   }
 }
 
+async function decodeAudioFromArrayBuffer(buf: ArrayBuffer): Promise<AudioBuffer | null> {
+  try {
+    return await getAudioContext().decodeAudioData(buf.slice(0));
+  } catch {
+    return null;
+  }
+}
+
+async function decodeWavFromDesktop(path: string): Promise<AudioBuffer | null> {
+  if (!desktop) return null;
+  try {
+    const res = await desktop.extractAudio(path);
+    if (res?.ok && res.wav) return await decodeAudioFromArrayBuffer(res.wav);
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
 export interface ImportProgress {
   name: string;
   index: number;
   total: number;
 }
 
-export async function importFile(file: File, onProgress?: (p: ImportProgress) => void): Promise<MediaAsset> {
-  const kind = classify(file);
-  if (!kind) throw new Error(`${file.name}: unsupported file type. Use MP4, MOV, WebM, MP3, WAV, or image files.`);
+interface AssetSource {
+  name: string;
+  kind: MediaKind;
+  url: string;
+  file?: File | Blob;
+  path?: string;
+}
 
-  onProgress?.({ name: file.name, index: 0, total: 1 });
-  const url = URL.createObjectURL(file);
+async function decodeAudioFromSource(source: AssetSource, allowFetchFallback: boolean): Promise<AudioBuffer | null> {
+  if (source.path) {
+    const fromDisk = await decodeWavFromDesktop(source.path);
+    if (fromDisk) return fromDisk;
+  }
+  if (source.file) return decodeAudioFromBlob(source.file);
+  if (allowFetchFallback && source.url) {
+    try {
+      const buf = await (await fetch(source.url)).arrayBuffer();
+      return await decodeAudioFromArrayBuffer(buf);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function importSource(source: AssetSource, onProgress?: (p: ImportProgress) => void): Promise<MediaAsset> {
+  onProgress?.({ name: source.name, index: 0, total: 1 });
+
   const base: MediaAsset = {
     id: uid('ast'),
-    name: file.name.replace(/\.[^.]+$/, ''),
-    kind,
+    name: source.name.replace(/\.[^.]+$/, ''),
+    kind: source.kind,
     duration: 10,
     width: 1920,
     height: 1080,
     hasAudio: false,
-    url,
-    file,
+    url: source.url,
+    file: source.file,
+    path: source.path,
   };
 
-  if (kind === 'video') {
-    const v = makeVideo(url);
+  if (source.kind === 'video') {
+    const v = makeVideo(source.url);
     try {
       await waitEvent(v, 'loadedmetadata');
       base.width = v.videoWidth || 1920;
       base.height = v.videoHeight || 1080;
 
-      const audio = await decodeAudioFromBlob(file);
+      const audio = await decodeAudioFromSource(source, false);
       if (audio && audio.duration > 0.05) {
         base.hasAudio = true;
         base.audioBuffer = audio;
@@ -219,18 +267,17 @@ export async function importFile(file: File, onProgress?: (p: ImportProgress) =>
       const ctx = canvas.getContext('2d')!;
       if (v.readyState >= 2) ctx.drawImage(v, 0, 0, tw, th);
       base.thumbnail = canvas.toDataURL('image/jpeg', 0.72);
-      if (base.hasAudio && !base.thumbnail) base.thumbnail = waveformThumbnail(base.peaks ?? []);
     } finally {
       v.pause();
       v.removeAttribute('src');
       v.load();
     }
-  } else if (kind === 'audio') {
-    const audio = await decodeAudioFromBlob(file);
+  } else if (source.kind === 'audio') {
+    const audio = await decodeAudioFromSource(source, true);
     let duration = audio?.duration ?? 0;
     if (!duration) {
       const a = document.createElement('audio');
-      a.src = url;
+      a.src = source.url;
       await waitEvent(a, 'loadedmetadata').catch(() => undefined);
       duration = Number.isFinite(a.duration) ? a.duration : 0;
       a.src = '';
@@ -245,7 +292,7 @@ export async function importFile(file: File, onProgress?: (p: ImportProgress) =>
       base.thumbnail = waveformThumbnail(base.peaks);
     }
   } else {
-    const img = await loadImage(url);
+    const img = await loadImage(source.url);
     base.width = img.naturalWidth;
     base.height = img.naturalHeight;
     base.duration = 10;
@@ -255,11 +302,45 @@ export async function importFile(file: File, onProgress?: (p: ImportProgress) =>
   return base;
 }
 
+export async function importFile(file: File, onProgress?: (p: ImportProgress) => void): Promise<MediaAsset> {
+  const kind = classify(file);
+  if (!kind) throw new Error(`${file.name}: unsupported file type. Use MP4, MOV, WebM, MP3, WAV, or image files.`);
+  const url = URL.createObjectURL(file);
+  return importSource({ name: file.name, kind, url, file }, onProgress);
+}
+
+export interface NativeMediaEntry {
+  path: string;
+  url: string;
+  name: string;
+}
+
+/** Import a file that stays on disk (desktop shell) and streams over the media protocol. */
+export async function importNative(entry: NativeMediaEntry, onProgress?: (p: ImportProgress) => void): Promise<MediaAsset> {
+  const kind = classifyName(entry.name);
+  if (!kind) throw new Error(`${entry.name}: unsupported file type.`);
+  return importSource({ name: entry.name, kind, url: entry.url, path: entry.path }, onProgress);
+}
+
 export async function ensureAudioDecoded(asset: MediaAsset): Promise<AudioBuffer | null> {
   if (asset.kind === 'image') return null;
   if (asset.audioBuffer) return asset.audioBuffer;
-  if (!asset.file) return null;
-  const audio = await decodeAudioFromBlob(asset.file);
+
+  let audio: AudioBuffer | null = null;
+  if (asset.file) {
+    audio = await decodeAudioFromBlob(asset.file);
+  } else if (asset.path && desktop) {
+    audio = await decodeWavFromDesktop(asset.path);
+    if (!audio && asset.kind === 'audio') {
+      try {
+        const buf = await (await fetch(asset.url)).arrayBuffer();
+        audio = await decodeAudioFromArrayBuffer(buf);
+      } catch {
+        audio = null;
+      }
+    }
+  }
+
   if (audio) {
     asset.audioBuffer = audio;
     asset.hasAudio = true;
