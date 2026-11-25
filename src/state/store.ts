@@ -35,6 +35,7 @@ interface EditorState {
   assets: Record<string, MediaAsset>;
   workspace: 'edit' | 'color';
   colorBypass: boolean;
+  fineScrub: boolean;
   assetOrder: string[];
   playhead: number;
   playing: boolean;
@@ -53,6 +54,7 @@ interface EditorState {
   reframeOpen: boolean;
   setWorkspace: (workspace: 'edit' | 'color') => void;
   setColorBypass: (bypass: boolean) => void;
+  setFineScrub: (fine: boolean) => void;
   addLut: (lut: ProjectLut) => string;
   removeLut: (id: string) => void;
 
@@ -146,6 +148,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   assets: {},
   workspace: 'edit',
   colorBypass: false,
+  fineScrub: false,
   assetOrder: [],
   playhead: 0,
   playing: false,
@@ -244,6 +247,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setReframeOpen: (open) => set({ reframeOpen: open }),
   setWorkspace: (workspace) => set({ workspace }),
   setColorBypass: (bypass) => set({ colorBypass: bypass }),
+  setFineScrub: (fine) => set({ fineScrub: fine }),
 
   addLut: (lut) => {
     const id = uid('lut');
@@ -622,6 +626,14 @@ export function resetClipVisuals(clip: Clip): Clip {
     volume: 1,
     fadeIn: 0,
     fadeOut: 0,
+    fadeCurve: 'linear',
+    pan: 0,
+    eqLow: 0,
+    eqMid: 0,
+    eqHigh: 0,
+    compress: 0,
+    muted: false,
+    audioType: null,
     keyframes: {},
   };
 }

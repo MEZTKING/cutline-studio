@@ -190,6 +190,10 @@ export function App() {
         case 'R':
           state.setReframeOpen(true);
           break;
+        case 'f':
+        case 'F':
+          state.setFineScrub(!state.fineScrub);
+          break;
         case 'Delete':
         case 'Backspace':
           if (state.selection.clipId) {

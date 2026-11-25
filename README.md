@@ -2,7 +2,7 @@
 
 A touch-first, browser-native video editor. Import, cut, trim, grade, title, mix, and export — all on your device, with no upload and no account.
 
-**Status: v0.5.1 — two builds from one engine, with a DaVinci-style colour page (GPU grading, LUTs, scopes, wheels).** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
+**Status: v0.6.0 — two builds from one engine, with a DaVinci-style colour page and a proper audio mixer.** This is a real editing engine and a real export pipeline, not a mockup. It is deliberately shaped like a professional NLE (multi-track timeline, keyframes, transitions, WebCodecs export), but it is **not yet at Premiere / DaVinci parity** — see the roadmap for the honest gap list.
 
 ![Cutline Studio](docs/screens/desktop-editing.png)
 
@@ -151,6 +151,8 @@ use **File → Project Settings…** (`Ctrl/Cmd+,`).
 - Drag, trim from either edge, split at the playhead, delete or ripple-delete.
 - Magnetic snapping to clip edges and the playhead; locked tracks; mute/hide.
 - Frame stepping, timeline scrubbing, scrubbing while paused, auto-scroll during playback.
+- **Scrub preview** — hover (or scrub) the ruler to see the composited frame and timecode.
+- **Fine scrub** (`F`) — 1/5-speed, frame-snapped ruler dragging for exact cuts.
 - Undo/redo with 50 steps, per-gesture history (a drag is one undo step).
 
 **Look**
@@ -179,6 +181,12 @@ use **File → Project Settings…** (`Ctrl/Cmd+,`).
   and a bottom sheet on phones that keeps the preview visible.
 - Requires WebGL2 for LUTs and wheels; without it the basic sliders fall back to Canvas2D filters.
 
+**Audio page**
+![Audio controls](docs/screens/audio-panel.png)
+
+**Scrub preview**
+![Scrub preview](docs/screens/scrub-preview.png)
+
 **Reframing**
 - **Auto-reframe** to 9:16, 4:5, 1:1, or 16:9: detects faces on-device (BlazeFace),
   fills the new canvas, and keyframes the pan so the subject stays in shot.
@@ -187,7 +195,10 @@ use **File → Project Settings…** (`Ctrl/Cmd+,`).
 - Centre-crop fallback when no face is found or the detector is unavailable.
 
 **Audio**
-- Web Audio mixdown with per-clip volume, fades, speed, track mute, and transition crossfades.
+- dB gain, pan, 3-band EQ, compressor, normalize, clip mute, track solo.
+- Fade in/out with **linear / smooth / exponential** curves (audio and video fades).
+- **Dialogue / Music / SFX** presets that set EQ + compression in one click.
+- Web Audio mixdown with keyframed volume, speed, and transition crossfades.
 - Automatic audio decode on import; waveform thumbnails in the bin and on the timeline.
 
 **Delivery**
@@ -230,6 +241,7 @@ use **File → Project Settings…** (`Ctrl/Cmd+,`).
 | Add title | `T` |
 | Captions panel | `C` |
 | Auto-reframe | `R` |
+| Fine scrub | `F` |
 | Undo / redo | `Ctrl/Cmd+Z` / `Ctrl/Cmd+Shift+Z` |
 | Step a frame | `←` / `→` (add `Shift` for 1 s) |
 | Start / end | `Home` / `End` |
@@ -288,7 +300,8 @@ duplicate/undo, and persistence.
 Latest runs: **all suites passing** — end-to-end smoke (import → edit → transition →
 export → decode → offline reload), on-device caption generation from real speech,
 SRT round-trip, auto-reframe with a moving face, titles and decimal inputs, export
-cancel-and-retry, mobile/landscape layout, and the GPU colour page (LUT application,
+cancel-and-retry, audio pan/mute/presets through export, fine scrub + thumbnails,
+mobile/landscape layout, and the GPU colour page (LUT application,
 channel order, bypass, scopes, burned-in export, persistence, phone sheet). Reports are
 written to `test-results/`.
 
@@ -317,6 +330,9 @@ Reports land in `test-results/desktop-*.json`; the colour report is `test-result
   no HDR/colour management, no Fairlight/Fusion equivalents.
 - Colour v1 is a **primary grade per clip**: no curves, HSL qualifiers, power windows,
   node graphs, or keyframed grades yet. LUT import is 3D `.cube` only.
+- Audio v1 has per-clip EQ/compression but no buses, sidechain ducking, noise reduction, or 5.1.
+- Fine scrub is 1/5 speed; hover preview renders a small composited frame and is throttled
+  for performance.
 - Desktop v1: the FFmpeg master is transcoded from the browser render, projects reference
   media paths (no bundle/relink UI yet), and there is no proxy or render-queue workflow.
 - Preview is capped at 1280 px internally; export still renders at full target resolution.

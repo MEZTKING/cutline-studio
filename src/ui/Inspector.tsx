@@ -9,7 +9,9 @@ import {
   sourceDuration,
   upsertKeyframe,
 } from '../core/model';
-import { COLOR_DEFAULTS, TRANSITION_LABEL, type AnimatableProp, type ColorGrade, type TransitionType } from '../core/types';
+import { COLOR_DEFAULTS, TRANSITION_LABEL, type AnimatableProp, type AudioType, type ColorGrade, type FadeCurve, type TransitionType } from '../core/types';
+import { AUDIO_PRESETS, dbToLinear, linearToDb, presetPatch } from '../audio/envelope';
+import { ensureAudioDecoded } from '../media/import';
 import { useEditor } from '../state/store';
 import { Icon } from './icons';
 
@@ -118,6 +120,7 @@ function ParamRow({
   step,
   onChange,
   kf,
+  kfProp,
   kfLabel,
 }: {
   label: string;
@@ -127,6 +130,7 @@ function ParamRow({
   step: number;
   onChange: (v: number) => void;
   kf?: 'none' | 'off' | 'on' | 'animated';
+  kfProp?: AnimatableProp;
   kfLabel?: string;
 }) {
   const begin = () => useEditor.getState().beginGesture();
@@ -151,7 +155,7 @@ function ParamRow({
           title={kfLabel ?? 'Toggle keyframe at playhead'}
           onClick={() => {
             const state = useEditor.getState();
-            if (state.selection.clipId) state.toggleKeyframe(state.selection.clipId, labelToProp(label));
+            if (state.selection.clipId) state.toggleKeyframe(state.selection.clipId, kfProp ?? labelToProp(label));
           }}
         >
           <Icon name="diamond" size={10} />
@@ -242,6 +246,7 @@ function ClipPanel({ clipId }: { clipId: string }) {
   const found = findClip(project, clipId);
   const playhead = useSlowPlayhead();
   const livePatchClip = useEditor((s) => s.livePatchClip);
+  const [normalizing, setNormalizing] = useState(false);
 
   if (!found) return <ProjectPanel />;
   const { clip, track } = found;
@@ -271,6 +276,41 @@ function ClipPanel({ clipId }: { clipId: string }) {
 
   const durationLimit = asset ? sourceDuration(clip, asset) : Number.POSITIVE_INFINITY;
   const prev = previousClip(track, clip);
+
+  const normalizeAudio = async () => {
+    if (!asset || normalizing) return;
+    setNormalizing(true);
+    try {
+      const buffer = await ensureAudioDecoded(asset);
+      if (!buffer) {
+        useEditor.getState().notify('No decodable audio in this clip.', 'error');
+        return;
+      }
+      const sampleRate = buffer.sampleRate;
+      const start = Math.max(0, Math.floor(clip.inPoint * sampleRate));
+      const length = Math.min(buffer.length - start, Math.ceil(clip.duration * clip.speed * sampleRate));
+      let peak = 0;
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = start; i < start + length; i += 4) {
+          const v = Math.abs(data[i]);
+          if (v > peak) peak = v;
+        }
+      }
+      if (peak < 0.001) {
+        useEditor.getState().notify('That section is silent.', 'error');
+        return;
+      }
+      const gain = Math.min(4, Math.max(0.02, 0.89 / peak));
+      const state = useEditor.getState();
+      state.beginGesture();
+      state.livePatchClip(clip.id, { volume: gain });
+      state.endGesture();
+      state.notify(`Normalized to -1 dBFS · ${linearToDb(gain).toFixed(1)} dB`, 'success');
+    } finally {
+      setNormalizing(false);
+    }
+  };
 
   return (
     <>
@@ -535,9 +575,79 @@ function ClipPanel({ clipId }: { clipId: string }) {
       <Section title="Audio & Speed" defaultOpen={asset?.kind === 'audio'}>
         {asset?.kind !== 'image' && (
           <>
-            <ParamRow label="Volume" value={value('volume') * 100} min={0} max={200} step={1} kf={kfState('volume')} onChange={(v) => setProp('volume', v / 100)} />
+            <div className="field">
+              <label htmlFor="audio-type">Sound type</label>
+              <select
+                id="audio-type"
+                value={clip.audioType ?? ''}
+                onChange={(e) => {
+                  const state = useEditor.getState();
+                  state.beginGesture();
+                  livePatchClip(clip.id, presetPatch(e.target.value as AudioType | ''));
+                  state.endGesture();
+                }}
+              >
+                <option value="">Custom</option>
+                {(Object.keys(AUDIO_PRESETS) as AudioType[]).map((type) => (
+                  <option key={type} value={type}>
+                    {AUDIO_PRESETS[type].label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <ParamRow
+              label="Volume dB"
+              value={Math.min(12, Math.max(-60, linearToDb(value('volume'))))}
+              min={-60}
+              max={12}
+              step={0.5}
+              kf={kfState('volume')}
+              kfProp="volume"
+              onChange={(v) => setProp('volume', dbToLinear(v))}
+            />
+            <ParamRow label="Pan" value={(clip.pan ?? 0) * 100} min={-100} max={100} step={1} kf="none" onChange={(v) => livePatchClip(clip.id, { pan: v / 100 })} />
             <ParamRow label="Fade in" value={clip.fadeIn} min={0} max={Math.min(10, clip.duration)} step={0.05} kf="none" onChange={(v) => livePatchClip(clip.id, { fadeIn: v })} />
             <ParamRow label="Fade out" value={clip.fadeOut} min={0} max={Math.min(10, clip.duration)} step={0.05} kf="none" onChange={(v) => livePatchClip(clip.id, { fadeOut: v })} />
+            <div className="field">
+              <label htmlFor="fade-curve">Fade curve</label>
+              <select
+                id="fade-curve"
+                value={clip.fadeCurve ?? 'linear'}
+                onChange={(e) => {
+                  const state = useEditor.getState();
+                  state.beginGesture();
+                  livePatchClip(clip.id, { fadeCurve: e.target.value as FadeCurve });
+                  state.endGesture();
+                }}
+              >
+                <option value="linear">Linear</option>
+                <option value="smooth">Smooth</option>
+                <option value="exponential">Exponential</option>
+              </select>
+            </div>
+            <ParamRow label="EQ low" value={clip.eqLow ?? 0} min={-12} max={12} step={0.5} kf="none" onChange={(v) => livePatchClip(clip.id, { eqLow: v })} />
+            <ParamRow label="EQ mid" value={clip.eqMid ?? 0} min={-12} max={12} step={0.5} kf="none" onChange={(v) => livePatchClip(clip.id, { eqMid: v })} />
+            <ParamRow label="EQ high" value={clip.eqHigh ?? 0} min={-12} max={12} step={0.5} kf="none" onChange={(v) => livePatchClip(clip.id, { eqHigh: v })} />
+            <ParamRow label="Compress" value={(clip.compress ?? 0) * 100} min={0} max={100} step={1} kf="none" onChange={(v) => livePatchClip(clip.id, { compress: v / 100 })} />
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <button className="btn sm" onClick={() => void normalizeAudio()} disabled={normalizing}>
+                <Icon name="volume" size={12} /> {normalizing ? 'Analyzing…' : 'Normalize'}
+              </button>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={Boolean(clip.muted)}
+                  onChange={(e) => {
+                    const state = useEditor.getState();
+                    state.beginGesture();
+                    state.livePatchClip(clip.id, { muted: e.target.checked });
+                    state.endGesture();
+                  }}
+                />
+                Mute clip
+              </label>
+            </div>
+            <div className="hint">Volume is shown in dB. Type applies an EQ/compression preset; all controls are baked into exports.</div>
           </>
         )}
         <ParamRow

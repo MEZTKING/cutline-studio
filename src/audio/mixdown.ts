@@ -1,5 +1,6 @@
 import { ensureAudioDecoded } from '../media/import';
 import { planAudio } from './engine';
+import { createClipChain } from './chain';
 import type { MediaAsset, Project } from '../core/types';
 
 /** Mix the timeline to mono 16 kHz PCM for on-device speech recognition. */
@@ -21,14 +22,15 @@ export async function renderSpeech(project: Project, assets: Record<string, Medi
     const src = ctx.createBufferSource();
     src.buffer = item.buffer;
     src.playbackRate.value = item.clip.speed;
-    const gain = ctx.createGain();
+    const chain = createClipChain(ctx, item.clip, ctx.destination);
+    const gain = chain.gain;
     const startAt = Math.max(0, item.when);
     gain.gain.setValueAtTime(Math.max(0.0001, item.startGain), startAt);
     for (const ev of item.events) {
       if (ev.t <= 0) continue;
       gain.gain.linearRampToValueAtTime(Math.max(0.0001, ev.v), startAt + ev.t);
     }
-    src.connect(gain).connect(ctx.destination);
+    src.connect(chain.input);
     try {
       src.start(startAt, Math.max(0, item.offset));
       src.stop(startAt + item.playDur + 0.05);
@@ -60,14 +62,15 @@ export async function renderMixdown(project: Project, assets: Record<string, Med
     const src = ctx.createBufferSource();
     src.buffer = item.buffer;
     src.playbackRate.value = item.clip.speed;
-    const gain = ctx.createGain();
+    const chain = createClipChain(ctx, item.clip, ctx.destination);
+    const gain = chain.gain;
     const startAt = item.when;
     gain.gain.setValueAtTime(Math.max(0.0001, item.startGain), startAt);
     for (const ev of item.events) {
       if (ev.t <= 0) continue;
       gain.gain.linearRampToValueAtTime(Math.max(0.0001, ev.v), startAt + ev.t);
     }
-    src.connect(gain).connect(ctx.destination);
+    src.connect(chain.input);
     try {
       src.start(startAt, Math.max(0, item.offset));
       src.stop(startAt + item.playDur + 0.05);

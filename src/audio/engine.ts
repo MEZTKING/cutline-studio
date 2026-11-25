@@ -1,6 +1,8 @@
-import { clipEnd, previousClip } from '../core/model';
+import { clipEnd, previousClip, propValue } from '../core/model';
 import type { Clip, MediaAsset, Project, Track } from '../core/types';
 import { ensureAudioDecoded, getAudioContext } from '../media/import';
+import { clamp, curveValue } from './envelope';
+import { createClipChain } from './chain';
 
 export interface GainEvent {
   /** Seconds from the start of the scheduled region (i.e. of the clip segment being played). */
@@ -25,13 +27,6 @@ export interface AudioItem {
   events: GainEvent[];
 }
 
-function fadeFactors(clip: Clip, local: number): number {
-  let f = 1;
-  if (clip.fadeIn > 0.005) f *= Math.min(1, Math.max(0, local / clip.fadeIn));
-  if (clip.fadeOut > 0.005) f *= Math.min(1, Math.max(0, (clip.duration - local) / clip.fadeOut));
-  return f;
-}
-
 function transitionOutOf(track: Track, clip: Clip, asset: MediaAsset): number {
   const ordered = [...track.clips].sort((a, b) => a.start - b.start);
   const idx = ordered.findIndex((c) => c.id === clip.id);
@@ -46,17 +41,21 @@ function transitionOutOf(track: Track, clip: Clip, asset: MediaAsset): number {
 /** Build the schedule for every audible clip at or after `from`. */
 export function planAudio(project: Project, assets: Record<string, MediaAsset>, from: number): AudioItem[] {
   const items: AudioItem[] = [];
+  const anySolo = project.tracks.some((t) => t.solo);
+
   for (const track of project.tracks) {
     if (track.muted) continue;
+    if (anySolo && !track.solo) continue;
     for (const clip of track.clips) {
+      if (clip.muted) continue;
       const asset = assets[clip.assetId];
       if (!asset?.audioBuffer) continue;
       if (clipEnd(clip) <= from + 0.005) continue;
-      if (clip.start < from && clipEnd(clip) <= from) continue;
 
       const buffer = asset.audioBuffer;
       const extraOut = transitionOutOf(track, clip, asset);
-      const end = Math.min(clipEnd(clip) + extraOut, clip.start + (asset.duration - clip.inPoint) / clip.speed);
+      const sourceEnd = clip.start + (asset.duration - clip.inPoint) / clip.speed;
+      const end = Math.min(clipEnd(clip) + extraOut, sourceEnd);
       const start = Math.max(from, clip.start);
       const playDur = end - start;
       if (playDur <= 0.01) continue;
@@ -65,43 +64,57 @@ export function planAudio(project: Project, assets: Record<string, MediaAsset>, 
       if (offset >= buffer.duration - 0.01) continue;
 
       const local = start - clip.start;
-      let startGain = clip.volume * fadeFactors(clip, local);
-
-      // Transition-in fades the clip up from silence.
       const prev = previousClip(track, clip);
       const dIn = clip.transition && prev ? Math.min(clip.transition.duration, clip.duration, prev.duration) : 0;
-      if (dIn > 0.01) {
-        if (local < dIn) startGain *= Math.min(1, Math.max(0, local / dIn));
-        else startGain *= 1;
-      }
+      const inDur = Math.max(clip.fadeIn ?? 0, dIn);
+      const fadeOut = clip.fadeOut ?? 0;
+      const curve = clip.fadeCurve ?? 'linear';
 
-      const events: GainEvent[] = [];
-      const inDur = Math.max(clip.fadeIn, dIn);
-      if (inDur > 0.01 && local < inDur) {
-        events.push({ t: inDur - local, v: clip.volume });
-      } else if (local < 0.02) {
-        events.push({ t: 0.02, v: clip.volume });
-      }
-
-      if (clip.fadeOut > 0.01) {
-        const fadeStart = Math.max(0, clip.duration - clip.fadeOut - local);
-        const fadeEnd = clip.duration - local;
-        if (fadeEnd > 0.01) {
-          events.push({ t: fadeStart, v: clip.volume });
-          events.push({ t: fadeEnd, v: 0 });
+      const gainAt = (atLocal: number): number => {
+        const l = clamp(atLocal, 0, clip.duration);
+        let v = propValue(clip, 'volume', l);
+        if (inDur > 0.005) v *= curveValue(curve, l / inDur);
+        if (fadeOut > 0.005) v *= curveValue(curve, (clip.duration - l) / fadeOut);
+        if (extraOut > 0.005 && atLocal > clip.duration) {
+          v *= 1 - curveValue(curve, (atLocal - clip.duration) / extraOut);
         }
-      }
-      if (extraOut > 0.01) {
-        const outStart = clip.duration - local;
-        if (outStart >= 0) {
-          events.push({ t: outStart, v: clip.volume });
-          events.push({ t: outStart + extraOut, v: 0 });
-        }
-      }
+        return clamp(v, 0, 4);
+      };
 
-      events.sort((a, b) => a.t - b.t);
-      const trimmed = events.filter((e) => e.t > 0.001);
-      items.push({ clip, track, asset, buffer, when: Math.max(0, start - from), offset, playDur, startGain, events: trimmed });
+      const times = new Set<number>();
+      const add = (t: number) => {
+        if (Number.isFinite(t)) times.add(Math.round(t * 1000) / 1000);
+      };
+      if (inDur > local) {
+        for (let i = 0; i <= 8; i++) add(local + ((inDur - local) * i) / 8);
+      }
+      if (fadeOut > 0.005) {
+        const fadeStart = clip.duration - fadeOut;
+        for (let i = 0; i <= 8; i++) add(fadeStart + (fadeOut * i) / 8);
+      }
+      if (extraOut > 0.005) {
+        for (let i = 0; i <= 8; i++) add(clip.duration + (extraOut * i) / 8);
+      }
+      for (const k of clip.keyframes.volume ?? []) add(k.t);
+      add(clip.duration);
+      add(clip.duration + extraOut);
+
+      const events: GainEvent[] = [...times]
+        .filter((t) => t > local + 0.005 && t <= end + 0.005)
+        .sort((a, b) => a - b)
+        .map((t) => ({ t: t - local, v: gainAt(t) }));
+
+      items.push({
+        clip,
+        track,
+        asset,
+        buffer,
+        when: Math.max(0, start - from),
+        offset,
+        playDur,
+        startGain: gainAt(local),
+        events,
+      });
     }
   }
   return items;
@@ -110,7 +123,7 @@ export function planAudio(project: Project, assets: Record<string, MediaAsset>, 
 export class AudioEngine {
   private ctx: AudioContext;
   private master: GainNode;
-  private active: AudioBufferSourceNode[] = [];
+  private active: { src: AudioBufferSourceNode; nodes: AudioNode[] }[] = [];
   private startedAtCtx = 0;
   private startedAtTimeline = 0;
   private running = false;
@@ -137,9 +150,11 @@ export class AudioEngine {
     }
     // Make sure restored projects can decode their audio lazily.
     const needed = new Set<string>();
+    const anySolo = project.tracks.some((t) => t.solo);
     for (const track of project.tracks) {
-      if (track.muted) continue;
+      if (track.muted || (anySolo && !track.solo)) continue;
       for (const clip of track.clips) {
+        if (clip.muted) continue;
         if (clipEnd(clip) > from && !assets[clip.assetId]?.audioBuffer) needed.add(clip.assetId);
       }
     }
@@ -153,7 +168,8 @@ export class AudioEngine {
       const src = this.ctx.createBufferSource();
       src.buffer = item.buffer;
       src.playbackRate.value = Math.min(16, Math.max(0.0625, item.clip.speed));
-      const gain = this.ctx.createGain();
+      const chain = createClipChain(this.ctx, item.clip, this.master);
+      const gain = chain.gain;
       const startAt = t0 + item.when;
       gain.gain.setValueAtTime(item.startGain, startAt);
       for (const ev of item.events) {
@@ -161,7 +177,7 @@ export class AudioEngine {
         if (at <= startAt) continue;
         gain.gain.linearRampToValueAtTime(Math.max(0, ev.v), at);
       }
-      src.connect(gain).connect(this.master);
+      src.connect(chain.input);
       try {
         src.start(startAt, item.offset);
         const endAt = startAt + item.playDur;
@@ -173,7 +189,7 @@ export class AudioEngine {
       } catch {
         continue;
       }
-      this.active.push(src);
+      this.active.push({ src, nodes: chain.nodes });
     }
     this.startedAtCtx = t0;
     this.startedAtTimeline = from;
@@ -181,13 +197,20 @@ export class AudioEngine {
   }
 
   stop(): void {
-    for (const src of this.active) {
+    for (const { src, nodes } of this.active) {
       try {
         src.stop();
       } catch {
         /* already stopped */
       }
       src.disconnect();
+      for (const node of nodes) {
+        try {
+          node.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      }
     }
     this.active = [];
     this.running = false;

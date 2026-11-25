@@ -1,7 +1,7 @@
 {
   "name": "cutline-studio",
   "private": true,
-  "version": "0.5.1",
+  "version": "0.6.0",
   "type": "module",
   "description": "Cutline Studio — a fast, touch-first timeline editor that runs in the browser.",
   "scripts": {
@@ -12,7 +12,7 @@
     "test:smoke": "node tests/smoke.mjs",
     "test:features": "node tests/features.mjs",
     "test:mobile": "node tests/mobile.mjs",
-    "test": "node tests/srt.test.mjs && node tests/reframe.test.mjs && node tests/smoke.mjs && node tests/features.mjs && node tests/project-settings.mjs && node tests/mobile.mjs && node tests/captions.mjs && node tests/reframe-browser.mjs",
+    "test": "node tests/srt.test.mjs && node tests/reframe.test.mjs && node tests/smoke.mjs && node tests/features.mjs && node tests/project-settings.mjs && node tests/audio.mjs && node tests/scrub.mjs && node tests/mobile.mjs && node tests/captions.mjs && node tests/reframe-browser.mjs",
     "test:srt": "node tests/srt.test.mjs",
     "postinstall": "node scripts/sync-mediapipe.mjs",
     "predev": "node scripts/sync-mediapipe.mjs",
@@ -30,7 +30,9 @@
     "test:color": "node tests/color.mjs",
     "desktop:pack:win": "npm run build && electron-builder --win --dir",
     "serve:release": "node scripts/serve-release.mjs",
-    "test:project": "node tests/project-settings.mjs"
+    "test:project": "node tests/project-settings.mjs",
+    "test:audio": "node tests/audio.mjs",
+    "test:scrub": "node tests/scrub.mjs"
   },
   "dependencies": {
     "ffmpeg-static": "^5.3.0"

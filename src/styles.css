@@ -2336,3 +2336,43 @@ input[type="color"] {
   color: var(--text);
   background: rgba(12, 18, 20, 0.94);
 }
+
+.clip-muted {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  z-index: 3;
+  color: var(--danger);
+  opacity: 0.9;
+}
+
+.scrub-preview {
+  position: fixed;
+  z-index: 130;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #0a0c10;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.scrub-preview canvas {
+  display: block;
+  border-radius: 5px;
+  background: #000;
+}
+
+.scrub-tc {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 2px 1px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent);
+}
+
+.scrub-tc span {
+  color: var(--text-3);
+}

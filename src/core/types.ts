@@ -88,6 +88,9 @@ export type TransitionType =
   | 'slide-right'
   | 'iris';
 
+export type FadeCurve = 'linear' | 'smooth' | 'exponential';
+export type AudioType = 'dialogue' | 'music' | 'sfx';
+
 export interface Transition {
   type: TransitionType;
   duration: number;
@@ -121,9 +124,21 @@ export interface Clip {
   /** Source in-point in seconds. */
   inPoint: number;
   speed: number;
+  /** Linear gain, 0..4. UI shows dB. */
   volume: number;
   fadeIn: number;
   fadeOut: number;
+  fadeCurve?: FadeCurve;
+  /** -1 (left) .. 1 (right). */
+  pan?: number;
+  /** dB, -12..12. */
+  eqLow?: number;
+  eqMid?: number;
+  eqHigh?: number;
+  /** 0..1 compressor amount. */
+  compress?: number;
+  muted?: boolean;
+  audioType?: AudioType | null;
   transform: Transform;
   color: ColorGrade;
   /** Incoming transition; overlaps the previous clip on the same track. */
@@ -142,6 +157,7 @@ export interface Track {
   kind: TrackKind;
   name: string;
   muted: boolean;
+  solo?: boolean;
   hidden: boolean;
   locked: boolean;
   clips: Clip[];

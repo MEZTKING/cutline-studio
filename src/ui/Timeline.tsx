@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import { clipEnd, formatDuration, previousClip, projectDuration } from '../core/model';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { clipEnd, formatDuration, formatTimecode, previousClip, projectDuration } from '../core/model';
 import { freeStart, preferredTrack } from '../core/placement';
 import type { Clip, Track } from '../core/types';
 import { useEditor } from '../state/store';
+import { drawFrame, MediaPool, prepareFrame } from '../render/renderer';
 import { Icon } from './icons';
 
 const RULER_H = 26;
@@ -11,6 +12,7 @@ const AUDIO_H = 46;
 const MIN_DUR = 0.1;
 
 const rowHeight = (track: Track) => (track.kind === 'video' ? VIDEO_H : AUDIO_H);
+const quantize = (t: number, fps: number) => Math.max(0, Math.round(t * fps) / fps);
 
 function tickStep(zoom: number): number {
   const steps = [0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
@@ -98,6 +100,7 @@ export function Timeline() {
   const assets = useEditor((s) => s.assets);
   const zoom = useEditor((s) => s.zoom);
   const snap = useEditor((s) => s.snap);
+  const fineScrub = useEditor((s) => s.fineScrub);
   const selection = useEditor((s) => s.selection);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -125,8 +128,15 @@ export function Timeline() {
     e.preventDefault();
     const state = useEditor.getState();
     state.setPlaying(false);
-    seekFromClientX(e.clientX);
-    const move = (ev: PointerEvent) => seekFromClientX(ev.clientX);
+    const startX = e.clientX;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const startT = rect ? Math.max(0, (e.clientX - rect.left) / zoom) : 0;
+    state.setPlayhead(startT);
+    const move = (ev: PointerEvent) => {
+      const current = useEditor.getState();
+      const raw = startT + (ev.clientX - startX) / zoom * (current.fineScrub ? 0.2 : 1);
+      current.setPlayhead(current.fineScrub ? quantize(raw, current.project.fps) : raw);
+    };
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
@@ -416,6 +426,14 @@ export function Timeline() {
         >
           <Icon name="magnet" size={15} />
         </button>
+        <button
+          className={`btn ghost sm ${fineScrub ? 'active' : ''}`}
+          title="Fine scrub (F) — 1/5 speed and frame-snapped"
+          style={fineScrub ? { color: 'var(--warn)', borderColor: 'rgba(255,196,107,.45)' } : undefined}
+          onClick={() => useEditor.getState().setFineScrub(!fineScrub)}
+        >
+          <Icon name="gauge" size={14} /> <span className="tl-label">Fine</span>
+        </button>
         <span className="divider" />
         <button className="btn ghost icon sm" title="Zoom out" onClick={toolbarZoomOut}>
           <Icon name="zoomOut" size={15} />
@@ -454,13 +472,23 @@ export function Timeline() {
                         <Icon name={track.hidden ? 'eyeOff' : 'eye'} size={12} />
                       </button>
                     ) : (
-                      <button
-                        className={`th-btn ${track.muted ? 'on' : ''}`}
-                        title={track.muted ? 'Unmute track' : 'Mute track'}
-                        onClick={() => useEditor.getState().updateTrack(track.id, { muted: !track.muted })}
-                      >
-                        <Icon name={track.muted ? 'mute' : 'volume'} size={12} />
-                      </button>
+                      <>
+                        <button
+                          className={`th-btn ${track.solo ? 'on' : ''}`}
+                          title={track.solo ? 'Unsolo track' : 'Solo track'}
+                          style={track.solo ? { color: 'var(--accent)' } : undefined}
+                          onClick={() => useEditor.getState().updateTrack(track.id, { solo: !track.solo })}
+                        >
+                          <span style={{ fontSize: 9, fontWeight: 800 }}>S</span>
+                        </button>
+                        <button
+                          className={`th-btn ${track.muted ? 'on' : ''}`}
+                          title={track.muted ? 'Unmute track' : 'Mute track'}
+                          onClick={() => useEditor.getState().updateTrack(track.id, { muted: !track.muted })}
+                        >
+                          <Icon name={track.muted ? 'mute' : 'volume'} size={12} />
+                        </button>
+                      </>
                     )}
                     <button
                       className={`th-btn ${track.locked ? 'on' : ''}`}
@@ -590,6 +618,11 @@ export function Timeline() {
                             <Icon name="diamond" size={8} />
                           </div>
                         )}
+                        {clip.muted && (
+                          <div className="clip-muted" title="Clip audio muted">
+                            <Icon name="mute" size={9} />
+                          </div>
+                        )}
                         <div className="clip-handle start" data-handle="start" />
                         <div className="clip-handle end" data-handle="end" />
                       </div>
@@ -620,6 +653,132 @@ export function Timeline() {
             <PlayheadMarker zoom={zoom} />
           </div>
         </div>
+      </div>
+      <ScrubPreview zoom={zoom} scrollRef={scrollRef} canvasRef={canvasRef} />
+    </div>
+  );
+}
+
+function ScrubPreview({
+  zoom,
+  scrollRef,
+  canvasRef,
+}: {
+  zoom: number;
+  scrollRef: RefObject<HTMLDivElement | null>;
+  canvasRef: RefObject<HTMLDivElement | null>;
+}) {
+  const project = useEditor((s) => s.project);
+  const fps = project.fps;
+  const [pos, setPos] = useState<{ x: number; y: number; time: number } | null>(null);
+  const [thumbTime, setThumbTime] = useState<number | null>(null);
+  const canvasEl = useRef<HTMLCanvasElement>(null);
+  const poolRef = useRef<MediaPool | null>(null);
+  const seq = useRef(0);
+
+  const ratio = project.width / Math.max(1, project.height);
+  const maxW = 176;
+  const maxH = 112;
+  const tw = ratio >= 1 ? maxW : Math.max(30, Math.round(maxH * ratio));
+  const th = ratio >= 1 ? Math.max(30, Math.round(maxW / ratio)) : maxH;
+
+  useEffect(() => {
+    const pool = new MediaPool();
+    poolRef.current = pool;
+    return () => {
+      pool.dispose();
+      poolRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let touchScrub = false;
+    let last = 0;
+    let hideTimer = 0;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement).closest('.tl-ruler')) touchScrub = true;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' && !touchScrub) return;
+      const now = performance.now();
+      if (now - last < 55) return;
+      last = now;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const state = useEditor.getState();
+      const time = state.fineScrub ? state.playhead : Math.max(0, (e.clientX - rect.left) / zoom);
+      setPos({ x: e.clientX, y: e.clientY, time });
+    };
+    const onLeave = () => {
+      if (!touchScrub) setPos(null);
+    };
+    const onUp = () => {
+      if (!touchScrub) return;
+      touchScrub = false;
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => setPos(null), 450);
+    };
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointerleave', onLeave);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerdown', onDown);
+      el.removeEventListener('pointerleave', onLeave);
+      window.removeEventListener('pointerup', onUp);
+      window.clearTimeout(hideTimer);
+    };
+  }, [zoom, scrollRef, canvasRef]);
+
+  useEffect(() => {
+    if (!pos) {
+      setThumbTime(null);
+      return;
+    }
+    const t = window.setTimeout(() => setThumbTime(pos.time), 80);
+    return () => window.clearTimeout(t);
+  }, [pos?.time]);
+
+  useEffect(() => {
+    if (thumbTime == null) return;
+    const pool = poolRef.current;
+    const canvas = canvasEl.current;
+    if (!pool || !canvas) return;
+    const mine = ++seq.current;
+    let cancelled = false;
+    const draw = async () => {
+      try {
+        const state = useEditor.getState();
+        await prepareFrame(state.project, state.assets, thumbTime, pool, 'seek');
+        if (cancelled || mine !== seq.current) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        drawFrame(ctx, state.project, state.assets, thumbTime, tw, th, pool, {
+          luts: state.project.luts,
+          bypassColor: state.colorBypass,
+        });
+      } catch {
+        /* frame not ready */
+      }
+    };
+    void draw();
+    return () => {
+      cancelled = true;
+    };
+  }, [thumbTime, tw, th]);
+
+  if (!pos) return null;
+  const left = Math.min(Math.max(6, pos.x - tw / 2 - 6), window.innerWidth - tw - 14);
+  const top = pos.y - th - 48 < 60 ? pos.y + 26 : pos.y - th - 48;
+  return (
+    <div className="scrub-preview" style={{ left, top }}>
+      <canvas ref={canvasEl} width={tw} height={th} />
+      <div className="scrub-tc">
+        {formatTimecode(pos.time, fps)}
+        <span>· {Math.round(pos.time * fps)} frames</span>
       </div>
     </div>
   );

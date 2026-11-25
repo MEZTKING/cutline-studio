@@ -1,11 +1,12 @@
 import { clipEnd, clipAt, propValue, sourceTimeAt, transitionAt, type ActiveTransition } from '../core/model';
 import type { Clip, MediaAsset, Project, ProjectLut, Track } from '../core/types';
 import { getColorizer, shouldUseGpu } from '../color/colorizer';
+import { curveValue } from '../audio/envelope';
 
 export type FrameMode = 'play' | 'seek';
 
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
-const easeFade = (p: number) => clamp01(p);
+
 
 export interface VisualSource {
   clip: Clip;
@@ -175,7 +176,7 @@ export async function prepareFrame(project: Project, assets: Record<string, Medi
     const asset = assets[clip.assetId];
     if (!asset) continue;
     if (asset.kind === 'image') {
-      if (!pool.hasImage(asset.url)) void pool.image(asset.url);
+      jobs.push(pool.image(asset.url).then(() => undefined));
       continue;
     }
     if (asset.kind !== 'video') continue;
@@ -199,7 +200,7 @@ export async function prepareFrame(project: Project, assets: Record<string, Medi
     if (partner) {
       const pAsset = assets[partner.assetId];
       if (pAsset && pAsset.kind === 'image') {
-        if (!pool.hasImage(pAsset.url)) void pool.image(pAsset.url);
+        jobs.push(pool.image(pAsset.url).then(() => undefined));
       }
       if (pAsset && pAsset.kind === 'video') {
         const pKey = sourceKey(partner);
@@ -257,8 +258,8 @@ function drawClip(ctx: CanvasRenderingContext2D, clip: Clip, asset: MediaAsset |
   const local = Math.max(0, at - clip.start);
   if (local < -0.02) return;
   let opacity = propValue(clip, 'opacity', local);
-  if (clip.fadeIn > 0.01) opacity *= easeFade(local / clip.fadeIn);
-  if (clip.fadeOut > 0.01) opacity *= easeFade((clip.duration - local) / clip.fadeOut);
+  if (clip.fadeIn > 0.01) opacity *= curveValue(clip.fadeCurve, local / clip.fadeIn);
+  if (clip.fadeOut > 0.01) opacity *= curveValue(clip.fadeCurve, (clip.duration - local) / clip.fadeOut);
   opacity *= opts.alpha ?? 1;
   if (opacity <= 0.002) return;
 

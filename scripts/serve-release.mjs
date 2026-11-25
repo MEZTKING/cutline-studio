@@ -25,7 +25,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(`<!doctype html><meta name=viewport content="width=device-width"><title>Cutline downloads</title>
       <style>body{background:#0b0d10;color:#e7eaf0;font-family:system-ui;padding:24px}a{color:#5cf2b0}</style>
-      <h2>Cutline Studio 0.5.1</h2><ul>${rows.join('')}</ul>
+      <h2>Cutline Studio 0.6.0</h2><ul>${rows.join('')}</ul>
       <p style="color:#8b93a5">Download the portable Windows zip, extract it fully, then run <b>Cutline Studio.exe</b>.<br>
       Windows SmartScreen: More info ? Run anyway (unsigned build).</p>`);
     return;
